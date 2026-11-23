@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.react-router/
+coverage/
+*.tgz
+*.tsbuildinfo
+.DS_Store
+.env*
+!.env.example
+npm-debug.log*
+.pnpm-debug.log*
+
+# Genga media in development
+/examples/*/data

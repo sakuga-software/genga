@@ -1,0 +1,7 @@
+{
+  "plugins": ["oxc", "react", "typescript"],
+  "ignorePatterns": ["**/dist/**", "**/build/**", "**/.react-router/**"],
+  "rules": {
+    "no-nested-ternary": "error"
+  }
+}

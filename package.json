@@ -1,0 +1,24 @@
+{
+  "name": "genga-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm -F genga-example-react-router dev",
+    "lint": "oxlint .",
+    "format": "oxfmt --check .",
+    "format:fix": "oxfmt .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:pack": "node scripts/test-pack.mjs"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.28.0",
+    "oxlint": "^1.43.0",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "packageManager": "pnpm@12.15.0"
+}

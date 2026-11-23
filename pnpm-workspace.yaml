@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+  - apps/*
+  - examples/*
+
+allowBuilds:
+  '@tailwindcss/oxide': true
+  esbuild: true
+  sharp: true
+  '@parcel/watcher': false
