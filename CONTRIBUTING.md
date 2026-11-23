@@ -53,17 +53,12 @@ The server tests (`apps/server/test`) call the public API handler directly, agai
 
 ## CI and pull requests from forks
 
-CI runs on self-hosted runners. A workflow on a self-hosted runner runs the code of the pull
-request on our machines, so the jobs skip pull requests from forks:
+CI runs on GitHub-hosted runners, which are free for a public repository. A pull request from a
+fork runs on a fresh machine of GitHub, with no secret of this repository. The repository
+settings also require approval before workflows run for outside contributors.
 
-```yaml
-if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-```
-
-This guard is not enough alone: a pull request can change the workflow file itself. The
-repository settings must also require approval before workflows run for outside
-contributors. A maintainer runs the checks of a fork pull request after a review, for
-example by pushing the branch to this repository.
+Do not move these workflows to self-hosted runners: a workflow there runs the code of the pull
+request on our own machines.
 
 ## Release
 

@@ -13,15 +13,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Self-hosted runners only: the organization has no hosted minutes.
-# Jobs skip pull requests from forks, because they would run outside code on our machines.
-# See CONTRIBUTING.md: the repository settings must also require approval for outside contributors.
+# GitHub-hosted runners: free for a public repository, and a pull request from a fork runs on a
+# fresh machine of GitHub, never on our own machines. See CONTRIBUTING.md.
 
 jobs:
   lint:
     name: Lint and format
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","sakuga-main"]') || fromJSON('["self-hosted","sakuga-light"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -36,8 +34,7 @@ jobs:
 
   typecheck:
     name: Typecheck and build
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","sakuga-main"]') || fromJSON('["self-hosted","sakuga-light"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -53,8 +50,7 @@ jobs:
 
   test:
     name: Tests (Postgres) and packed tarball
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","sakuga-main"]') || fromJSON('["self-hosted","sakuga-linux"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
