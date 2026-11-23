@@ -1,0 +1,38 @@
+{
+  "name": "genga-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Genga as a standalone headless CMS: the admin, a public JSON API and the live preview bridge.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "start": "node ./server.mjs",
+    "test": "vitest run",
+    "typecheck": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@react-router/node": "^7.18.4",
+    "isbot": "^5.1.32",
+    "postgres": "^4.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.18.4",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.18.4",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "genga": "workspace:*",
+    "typescript": "^5",
+    "vite": "^7.3.7",
+    "vitest": "^5.1.1",
+    "zod": "^4.6.6"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

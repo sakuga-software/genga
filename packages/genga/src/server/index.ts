@@ -150,7 +150,7 @@ export type Genga = ReturnType<typeof createGenga>;
 export { runMigrations } from '../../migrations/migrate.mjs';
 export { GengaError } from './errors';
 export { isAllowedOrigin } from './origin';
-export { hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from './auth';
+export { clientIp, hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from './auth';
 export { localStorageAdapter } from './storage/local';
 export type { StorageAdapter } from './storage/adapter';
 export { PREVIEW_HEADERS, PREVIEW_PARAM, type RouteResult } from './published';

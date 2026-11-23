@@ -1,0 +1,68 @@
+{
+  "collections": {
+    "posts": {
+      "label": "Articles",
+      "labelSingular": "Article",
+      "titleField": "title",
+      "sortField": "publishedDate",
+      "path": "/blog/{slug}",
+      "previewUrl": "http://localhost:4321/blog/{slug}",
+      "fields": {
+        "title": { "type": "text", "label": "Titre", "required": true, "maxLength": 160 },
+        "slug": { "type": "slug", "label": "Slug", "from": "title", "required": true },
+        "excerpt": { "type": "textarea", "label": "Extrait", "maxLength": 300, "rows": 3 },
+        "cover": { "type": "media", "label": "Image de couverture", "accept": "image" },
+        "publishedDate": { "type": "date", "label": "Date de publication", "required": true },
+        "tags": { "type": "tags", "label": "Étiquettes" },
+        "body": { "type": "blocks", "label": "Contenu" }
+      }
+    },
+    "pages": {
+      "label": "Pages",
+      "labelSingular": "Page",
+      "titleField": "title",
+      "path": "/{slug}",
+      "previewUrl": "http://localhost:4321/{slug}",
+      "access": { "publish": ["admin"] },
+      "fields": {
+        "title": { "type": "text", "label": "Titre", "required": true, "maxLength": 120 },
+        "slug": { "type": "slug", "label": "Slug", "from": "title", "required": true },
+        "description": { "type": "textarea", "label": "Description", "maxLength": 300 },
+        "body": { "type": "blocks", "label": "Contenu" }
+      }
+    }
+  },
+  "blocks": [
+    {
+      "type": "hero",
+      "label": "Bandeau",
+      "description": "Un grand titre, un texte et une image.",
+      "fields": {
+        "title": { "type": "text", "label": "Titre", "required": true },
+        "text": { "type": "textarea", "label": "Texte" },
+        "image": { "type": "media", "label": "Image", "accept": "image" }
+      }
+    },
+    {
+      "type": "rich-text",
+      "label": "Texte",
+      "fields": { "content": { "type": "richText", "label": "Texte", "required": true } }
+    },
+    {
+      "type": "image",
+      "label": "Image",
+      "fields": {
+        "image": { "type": "media", "label": "Image", "required": true, "accept": "image" },
+        "caption": { "type": "text", "label": "Légende" }
+      }
+    },
+    {
+      "type": "quote",
+      "label": "Citation",
+      "fields": {
+        "quote": { "type": "textarea", "label": "Citation", "required": true },
+        "author": { "type": "text", "label": "Auteur" }
+      }
+    }
+  ]
+}
