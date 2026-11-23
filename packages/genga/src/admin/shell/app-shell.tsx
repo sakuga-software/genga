@@ -315,18 +315,20 @@ export function AppShell({ data, children }: AppShellProps) {
                 <span>Rechercher</span>
                 <Kbd className="ml-2 hidden sm:inline-flex">⌘K</Kbd>
               </Button>
-              <a
-                href="/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                <span className="hidden sm:inline">Voir le site</span>
-                <ExternalLink aria-hidden className="size-3.5" />
-                <span className="sr-only">
-                  <span className="sm:hidden">Voir le site</span> (nouvel onglet)
-                </span>
-              </a>
+              {data.siteLink && (
+                <a
+                  href={data.siteLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-1 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  <span className="hidden sm:inline">Voir le site</span>
+                  <ExternalLink aria-hidden className="size-3.5" />
+                  <span className="sr-only">
+                    <span className="sm:hidden">Voir le site</span> (nouvel onglet)
+                  </span>
+                </a>
+              )}
               {data.user.role === 'author' && (
                 <Chip size="sm" variant="soft" color="warning" className="ml-1">
                   Mode auteur

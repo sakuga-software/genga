@@ -83,6 +83,7 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
       const user = await requireUser(request);
       return {
         adminPath: ctx.adminPath,
+        siteLink: ctx.siteLink,
         user,
         collections: navFor(user),
         canManageUsers: can(user, 'users.manage'),

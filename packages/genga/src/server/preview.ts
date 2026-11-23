@@ -69,7 +69,12 @@ export function previewTarget(
   const url = previewUrlOf(ctx, collection, name, doc);
   url.searchParams.set(PREVIEW_PARAM, doc.id);
   if (url.origin === originOf(ctx.siteUrl)) return { url: `${url.pathname}${url.search}`, origin: null };
-  if (ctx.previewSecret) url.searchParams.set(PREVIEW_TOKEN_PARAM, createPreviewToken(ctx.previewSecret, doc.id));
+  // A previewUrl function can give another origin per document: check each URL, not only the sample at start.
+  if (!ctx.previewOrigins.includes(url.origin) || !ctx.previewSecret) {
+    ctx.log.warn(`[genga] No preview for ${name}/${doc.slug}: the origin ${url.origin} is not a preview origin.`);
+    return null;
+  }
+  url.searchParams.set(PREVIEW_TOKEN_PARAM, createPreviewToken(ctx.previewSecret, doc.id));
   return { url: url.href, origin: url.origin };
 }
 

@@ -25,6 +25,8 @@ export type GengaOptions = {
    * Default: `GENGA_ADMIN_PATH`, else `/admin`.
    */
   adminPath?: string;
+  /** The link "Voir le site" of the admin. `null` hides it. Default: `/`. */
+  siteLink?: string | null;
   /** Origins allowed to send writes. The origin of `siteUrl` is always allowed. */
   allowedOrigins?: string[];
   /** Directory of the local storage adapter. Ignored when `storage` is set. */
@@ -91,6 +93,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     log: options.logger ?? console,
     siteUrl: options.siteUrl.replace(/\/+$/, ''),
     adminPath: normalizeAdminPath(options.adminPath ?? process.env.GENGA_ADMIN_PATH),
+    siteLink: options.siteLink === undefined ? '/' : options.siteLink,
     allowedOrigins,
     secureCookies: options.secureCookies ?? process.env.NODE_ENV === 'production',
     adminEmail: options.adminEmail?.trim().toLowerCase() || null,

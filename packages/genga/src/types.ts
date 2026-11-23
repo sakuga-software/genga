@@ -89,6 +89,8 @@ export type CollectionNav = {
 export type AppLayoutData = {
   /** Base path of the admin, for example `/admin`. */
   adminPath: string;
+  /** The link "Voir le site", or null to hide it. */
+  siteLink: string | null;
   user: PublicUser;
   collections: CollectionNav[];
   canManageUsers: boolean;

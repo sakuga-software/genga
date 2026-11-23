@@ -263,6 +263,28 @@ describe('preview targets', () => {
     }
   });
 
+  it('gives no preview for a document whose URL leaves the preview origins', async () => {
+    const config = configWith((doc) =>
+      doc.slug === 'other' ? 'https://evil.example/other' : `https://site.example/blog/${doc.slug}`,
+    );
+    const warnings: unknown[] = [];
+    const genga = createGenga(config, {
+      ...base,
+      mediaDir: ctx.mediaDir,
+      previewOrigins: ['https://site.example'],
+      previewSecret: SECRET,
+      logger: { info() {}, warn: (...args: unknown[]) => warnings.push(args), error() {} },
+    });
+    try {
+      const editor = await createUser(genga, 'editor');
+      const { id } = await genga.documents.create(editor, 'posts', { title: 'Other' });
+      expect((await genga.documents.get(editor, id)).preview).toBeNull();
+      expect(warnings).toHaveLength(1);
+    } finally {
+      await genga.close();
+    }
+  });
+
   it('keeps a relative URL without a token on the site origin', async () => {
     const editor = await createUser(ctx.genga, 'editor');
     const { id, slug: value } = await ctx.genga.documents.create(editor, 'journal', { title: 'Local' });

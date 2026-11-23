@@ -16,6 +16,7 @@ export type GengaContext = {
   siteUrl: string;
   /** Base path of the admin, for example `/admin`. The admin API is under `<adminPath>/api`. */
   adminPath: string;
+  siteLink: string | null;
   allowedOrigins: string[];
   /** Origins of preview pages on another origin. They never get write access. */
   previewOrigins: string[];
