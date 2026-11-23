@@ -30,6 +30,7 @@ async function boot(): Promise<GengaServer> {
     databaseUrl: settings.databaseUrl,
     siteUrl: settings.publicUrl,
     adminPath: settings.adminPath,
+    siteLink: settings.siteUrl,
     allowedOrigins: settings.allowedOrigins,
     previewOrigins: settings.previewOrigins,
     previewSecret: settings.secret,

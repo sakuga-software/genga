@@ -6,6 +6,8 @@ ARG NODE_IMAGE=node:22-alpine3.24
 ARG ALPINE_IMAGE=alpine:3.24
 
 FROM ${NODE_IMAGE} AS build
+# The SBOM scan also reads this stage: the final image bundles most packages into one file.
+ARG BUILDKIT_SBOM_SCAN_STAGE=true
 ARG PNPM_VERSION=12.15.0
 RUN npm install --global "pnpm@${PNPM_VERSION}"
 WORKDIR /repo

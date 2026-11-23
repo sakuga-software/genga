@@ -45,7 +45,7 @@ docker run -d --name genga -p 3000:3000 \
   -e GENGA_TRUSTED_PROXIES=1 \
   -v "$PWD/genga.config.json:/config/genga.config.json:ro" \
   -v genga-media:/data \
-  ghcr.io/sakuga-software/genga:0.1
+  ghcr.io/sakuga-software/genga:latest
 ```
 
 At start, the container runs `genga-migrate`, then the server. A bad setting or config stops
@@ -61,7 +61,7 @@ it at once, with the list of the problems:
 
 | Tag                 | Content                                    |
 | ------------------- | ------------------------------------------ |
-| `0.1.0`, `0.1`      | A release. Pin one of these in production. |
+| `X.Y.Z`, `X.Y`      | A release. Pin one of these in production. |
 | `latest`            | The last release.                          |
 | `edge`, `sha-<sha>` | The `main` branch. Not for production.     |
 
@@ -92,6 +92,7 @@ The images are for `linux/amd64` and `linux/arm64`, with provenance and SBOM att
 | `GENGA_TRUSTED_PROXIES` | `0`                                      | The number of reverse proxies in front of the server. See below.                                                                       |
 | `GENGA_RATE_LIMIT`      | `300`                                    | Requests per minute and per client address on the public API.                                                                          |
 | `GENGA_ADMIN_EMAIL`     | none                                     | The email of the first admin, filled in the setup form.                                                                                |
+| `GENGA_SITE_URL`        | none                                     | The public site, for the link "Voir le site" of the admin. Without it, the admin hides the link.                                       |
 | `PORT`                  | `3000`                                   | The port in the container.                                                                                                             |
 
 The three origin lists are separate on purpose. A CORS origin can only read published

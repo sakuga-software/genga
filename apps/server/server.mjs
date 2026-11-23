@@ -59,11 +59,24 @@ try {
 
 const handle = createRequestListener({ build, mode: 'production' });
 
-const server = http.createServer(async (req, res) => {
-  // This server acts as one proxy hop: Genga reads the client address from X-Forwarded-For.
+/**
+ * Appends the TCP peer to X-Forwarded-For, so this server acts as one proxy hop and Genga
+ * reads the client address from the header. The Fetch request is built from `rawHeaders`.
+ */
+function appendPeerAddress(req) {
   const peer = req.socket.remoteAddress ?? 'unknown';
   const forwarded = req.headers['x-forwarded-for'];
-  req.headers['x-forwarded-for'] = forwarded ? `${forwarded}, ${peer}` : peer;
+  const raw = [];
+  for (let index = 0; index < req.rawHeaders.length; index += 2) {
+    if (req.rawHeaders[index].toLowerCase() === 'x-forwarded-for') continue;
+    raw.push(req.rawHeaders[index], req.rawHeaders[index + 1]);
+  }
+  raw.push('X-Forwarded-For', forwarded ? `${forwarded}, ${peer}` : peer);
+  req.rawHeaders = raw;
+}
+
+const server = http.createServer(async (req, res) => {
+  appendPeerAddress(req);
   try {
     if (await serveStatic(req, res)) return;
   } catch (error) {

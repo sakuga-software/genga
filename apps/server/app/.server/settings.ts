@@ -16,6 +16,8 @@ export type Settings = {
   /** Proxies in front of this server. The server itself counts as one more hop. */
   trustedProxies: number;
   adminEmail: string | null;
+  /** The public site, for the link "Voir le site" of the admin. */
+  siteUrl: string | null;
   secret: string | null;
   port: number;
   /** Requests per minute and per client address on the public API. */
@@ -92,6 +94,11 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     problems.push(`GENGA_ADMIN_PATH cannot be /${segment}: the server uses this path.`);
   }
 
+  const siteUrl = env.GENGA_SITE_URL?.trim() || null;
+  if (siteUrl && !/^https?:\/\/[^/]/.test(siteUrl)) {
+    problems.push(`GENGA_SITE_URL must be a URL like https://www.example.com, not "${siteUrl}".`);
+  }
+
   const cors = env.GENGA_CORS_ORIGINS?.trim();
   const corsOrigins = cors === '*' ? '*' : origins(cors, 'GENGA_CORS_ORIGINS', problems);
 
@@ -111,6 +118,7 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     previewOrigins: origins(env.GENGA_PREVIEW_ORIGINS, 'GENGA_PREVIEW_ORIGINS', problems),
     trustedProxies: integer(env.GENGA_TRUSTED_PROXIES, 0, 'GENGA_TRUSTED_PROXIES', problems),
     adminEmail: env.GENGA_ADMIN_EMAIL?.trim() || null,
+    siteUrl,
     secret,
     port,
     rateLimit: integer(env.GENGA_RATE_LIMIT, 300, 'GENGA_RATE_LIMIT', problems, 1),

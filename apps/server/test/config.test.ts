@@ -141,6 +141,7 @@ describe('settings', () => {
       trustedProxies: 0,
       rateLimit: 300,
       secret: null,
+      siteUrl: null,
     });
   });
 
@@ -173,6 +174,7 @@ describe('settings', () => {
         GENGA_TRUSTED_PROXIES: '-1',
         PORT: 'eighty',
         GENGA_PREVIEW_ORIGINS: 'not a url',
+        GENGA_SITE_URL: 'www.example.com',
       });
     } catch (error) {
       message = (error as Error).message;
@@ -186,6 +188,7 @@ describe('settings', () => {
       'GENGA_TRUSTED_PROXIES must be an integer',
       'PORT must be an integer',
       'GENGA_PREVIEW_ORIGINS',
+      'GENGA_SITE_URL must be a URL',
     ]) {
       expect(message).toContain(expected);
     }

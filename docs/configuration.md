@@ -153,6 +153,7 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `adminEmail`          | `null`                            | Email of the first admin, shown in the setup form.                                                  |
 | `secureCookies`       | `NODE_ENV === 'production'`       | `__Host-genga` cookie with `Secure`.                                                                |
 | `trustedProxies`      | `GENGA_TRUSTED_PROXIES`, else 1   | Proxies in front of the app that append to `X-Forwarded-For`.                                       |
+| `siteLink`            | `/`                               | The link "Voir le site" of the admin. `null` hides it.                                              |
 | `previewOrigins`      | `GENGA_PREVIEW_ORIGINS`           | Origins of preview pages on another origin. Read-only access.                                       |
 | `previewSecret`       | `GENGA_SECRET`                    | Signs the preview tokens. 32 characters or more.                                                    |
 | `mediaResourcePolicy` | `same-origin`                     | `Cross-Origin-Resource-Policy` of `/media/*`. Use `cross-origin` when other origins show the media. |

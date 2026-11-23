@@ -30,6 +30,7 @@ services:
     environment:
       DATABASE_URL: postgres://genga:genga@postgres:5432/genga
       GENGA_PUBLIC_URL: http://localhost:3000
+      GENGA_SITE_URL: http://localhost:4321
       # The site that reads the API and shows the previews.
       GENGA_CORS_ORIGINS: http://localhost:4321
       GENGA_PREVIEW_ORIGINS: http://localhost:4321
