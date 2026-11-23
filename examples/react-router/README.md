@@ -1,4 +1,4 @@
-# Genga example: React Router v7
+# Genga example: React Router v8
 
 A minimal site with two collections (`pages` at `/:slug`, `posts` at `/blog/:slug`) and four
 blocks (hero, text, image, quote). It has no Tailwind: the admin uses the compiled

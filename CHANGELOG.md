@@ -27,6 +27,8 @@ All notable changes to the `genga` package. The format follows
 
 ### Changed
 
+- The peer range of `react-router` accepts React Router 8 (`^7.18.4 || ^8.5.2`). React Router 8
+  needs Node 22.22 or later. The headless server and the example use React Router 8 and Vite 8.
 - The admin loaders return `adminPath`. A document of the admin has `preview` (its preview
   URL and origin, or `null`).
 
