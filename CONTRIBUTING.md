@@ -68,7 +68,23 @@ example by pushing the branch to this repository.
 ## Release
 
 1. Update the version in `packages/genga/package.json` and move the "Unreleased" notes of
-   `CHANGELOG.md` under the new version.
-2. Merge to `main`, then push a tag `vX.Y.Z`. The release workflow publishes to npm with
-   provenance, and the Docker workflow pushes the image to GHCR for `linux/amd64` and
-   `linux/arm64`, with provenance and SBOM attestations.
+   `CHANGELOG.md` under the new version. Merge to `main`.
+2. On GitHub, « Draft a new release ». Create the tag `vX.Y.Z` on the merge commit, then
+   « Generate release notes » and « Publish release ».
+3. The release starts `release-npm.yml`: the checks of CI on the tag, the tarball, then the
+   publication. The publication waits until a person approves the environment `npm`. The tag also
+   starts `docker.yml`, which pushes the image to GHCR for `linux/amd64` and `linux/arm64`, with
+   provenance and SBOM attestations.
+
+A tag pushed alone publishes nothing on npm. A run from « Run workflow » packs and checks, and
+publishes nothing, also on a tag. To try a failed release again, use « Re-run jobs » on its run:
+a version that npm already has is skipped.
+
+No npm token exists. npm trusts the OIDC token of `release-npm.yml`, in the environment `npm`,
+as the trusted publisher of `genga`. To set it again, a person who can publish `genga` runs, with
+npm 11.5.1 or later:
+
+```sh
+npm trust github genga --file release-npm.yml \
+  --repository sakuga-software/genga --environment npm --allow-publish
+```
