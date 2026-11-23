@@ -1,0 +1,28 @@
+{
+  "name": "genga-example-react-router",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@react-router/node": "^7.18.4",
+    "@react-router/serve": "^7.18.4",
+    "genga": "workspace:*",
+    "isbot": "^5.1.32",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.18.4"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.18.4",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5",
+    "vite": "^7.3.7"
+  }
+}
