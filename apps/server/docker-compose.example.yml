@@ -1,0 +1,46 @@
+# Genga quick start: Postgres 18 and the Genga server, with the example config.
+#
+#   export GENGA_SECRET="$(openssl rand -base64 48)"
+#   docker compose -f docker-compose.example.yml up
+#
+# Then open the setup link that the server logs, and http://localhost:3000/admin.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: genga
+      POSTGRES_PASSWORD: genga
+      POSTGRES_DB: genga
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U genga']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  genga:
+    image: ${GENGA_IMAGE:-ghcr.io/sakuga-software/genga:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgres://genga:genga@postgres:5432/genga
+      GENGA_PUBLIC_URL: http://localhost:3000
+      # The site that reads the API and shows the previews.
+      GENGA_CORS_ORIGINS: http://localhost:4321
+      GENGA_PREVIEW_ORIGINS: http://localhost:4321
+      GENGA_SECRET: ${GENGA_SECRET:?Set GENGA_SECRET first, for example with openssl rand -base64 48}
+      # No reverse proxy in front of the server here. Set the number of proxies in production.
+      GENGA_TRUSTED_PROXIES: '0'
+    volumes:
+      - ./config.example.json:/config/genga.config.json:ro
+      - media:/data
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  media:
