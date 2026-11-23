@@ -6,6 +6,29 @@ All notable changes to the `genga` package. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Headless server: the Docker image `ghcr.io/sakuga-software/genga` (`apps/server`) runs the
+  admin, a public read API under `/api/v1` and the media, with a JSON or `.mjs` config file.
+- Public API v1: collections and their schemas, documents by list, slug and id, media
+  metadata, and drafts with a preview token. Published content only, ETag and `304`, CORS
+  from an allow list, a rate limit per client address. See `docs/api.md` and
+  `docs/openapi.yaml`.
+- Blocks without a component (`defineBlock` with a schema only).
+- Previews on another origin: `previewUrl` on a collection, `previewOrigins` and
+  `previewSecret` (`GENGA_PREVIEW_ORIGINS`, `GENGA_SECRET`), signed preview tokens valid
+  10 minutes for one document.
+- `genga/preview` with `connectPreview` for any framework, also in `genga/client`.
+  `usePreviewData` takes an `adminOrigin` option.
+- `richTextToHtml` and `toPublicData` in `genga`.
+- `adminPath` option and `GENGA_ADMIN_PATH`: the admin can live under another path.
+- `mediaResourcePolicy` option for the `Cross-Origin-Resource-Policy` of `/media/*`.
+
+### Changed
+
+- The admin loaders return `adminPath`. A document of the admin has `preview` (its preview
+  URL and origin, or `null`).
+
 ## [0.1.0]
 
 First public release.

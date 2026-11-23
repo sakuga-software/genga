@@ -24,6 +24,9 @@ export const heroBlock = defineBlock({
 ```
 
 - The props of the component are the field values, plus `_id` and `_type`.
+- `component` is optional. A block without a component is a schema only: the admin edits it,
+  and `RenderBlocks` renders nothing for it. The [headless server](./headless-server.md)
+  uses only such blocks, because the site that renders them is not a React Router app.
 - A `media` value reaches the component as a `MediaObject` (`url`, `alt`, `width`, `height`,
   `sizes`), because `populate` resolves the media ids before the render.
 - Each block gets a stable `_id`. Use it as a key, never the index.

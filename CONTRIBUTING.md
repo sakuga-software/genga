@@ -27,9 +27,19 @@ pnpm build
 pnpm test:pack   # packs genga, installs the tarball in a copy of the example, builds and serves it
 ```
 
-The tests create and empty a `genga_test` database. To use another server, set
+The tests create and empty the `genga_test` and `genga_server_test` databases. To use another server, set
 `GENGA_TEST_ADMIN_URL` (a database that can create databases) and `GENGA_TEST_DATABASE_URL`.
 `pnpm test:pack` also runs the migrations if `DATABASE_URL` is set.
+
+## The headless server
+
+```sh
+docker build -f apps/server/Dockerfile -t genga .
+GENGA_SECRET="$(openssl rand -base64 48)" GENGA_IMAGE=genga \
+  docker compose -f apps/server/docker-compose.example.yml up
+```
+
+The server tests (`apps/server/test`) call the public API handler directly, against Postgres.
 
 ## Conventions
 
@@ -60,4 +70,5 @@ example by pushing the branch to this repository.
 1. Update the version in `packages/genga/package.json` and move the "Unreleased" notes of
    `CHANGELOG.md` under the new version.
 2. Merge to `main`, then push a tag `vX.Y.Z`. The release workflow publishes to npm with
-   provenance.
+   provenance, and the Docker workflow pushes the image to GHCR for `linux/amd64` and
+   `linux/arm64`, with provenance and SBOM attestations.

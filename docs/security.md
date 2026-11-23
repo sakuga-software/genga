@@ -33,7 +33,7 @@ The client address is the one that the last trusted proxy added to `X-Forwarded-
 
 ## Admin responses
 
-`/admin` sends `X-Robots-Tag: noindex`, `Content-Security-Policy: frame-ancestors 'self'` and
+The admin (`/admin` by default) sends `X-Robots-Tag: noindex`, `Content-Security-Policy: frame-ancestors 'self'` and
 `Cache-Control: private, no-store`.
 
 ## Content
@@ -53,5 +53,26 @@ The client address is the one that the last trusted proxy added to `X-Forwarded-
 
 ## Preview
 
-Drafts render only for a signed-in user who can read the collection, and only on the route of
-the document. Preview responses are never cached by a shared cache.
+On the same origin, drafts render only for a signed-in user who can read the collection, and
+only on the route of the document. Preview responses are never cached by a shared cache.
+
+On another origin:
+
+- The preview URL carries a token: an HMAC-SHA256 of the document id and an expiry, signed
+  with `GENGA_SECRET`. It is valid 10 minutes and for one document. The comparison is in
+  constant time.
+- `GET /api/v1/preview/:id` answers `Cache-Control: no-store`, with CORS for the preview
+  origins only, and needs no cookie.
+- The editor sends `postMessage` to the exact origin of the preview URL and accepts messages
+  only from that origin and that window. The frame does the same with the admin origin.
+- Genga refuses to start if a `previewUrl` has an origin outside the preview origins, or if
+  the secret is missing or shorter than 32 characters.
+- The preview origins and the CORS origins never get write access: the CSRF check uses
+  only the allowed origins.
+
+## Public API
+
+The [headless server](./headless-server.md) serves published content only. It limits each
+client address with a token bucket (`GENGA_RATE_LIMIT` per minute) and sends CORS headers
+only to `GENGA_CORS_ORIGINS`. Media files of the server send
+`Cross-Origin-Resource-Policy: cross-origin`, so that other origins can show them.

@@ -1,0 +1,348 @@
+openapi: 3.1.0
+info:
+  title: Genga public API
+  version: 1.0.0
+  summary: Read-only JSON API of the Genga headless server.
+  description: |
+    Published content only. A draft is available only through `/preview/{id}`, with a preview
+    token. See docs/api.md for the conventions: cache, CORS, rate limit and errors.
+  license:
+    name: MIT
+    identifier: MIT
+security: []
+servers:
+  - url: http://localhost:3000/api/v1
+    description: The Docker quick start
+  - url: '{origin}/api/v1'
+    variables:
+      origin:
+        default: https://cms.example.com
+        description: GENGA_PUBLIC_URL of your server
+paths:
+  /collections:
+    get:
+      operationId: listCollections
+      summary: The collections and the blocks, with their field schemas
+      responses:
+        '200':
+          description: The schemas.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [collections, blocks]
+                properties:
+                  collections:
+                    type: array
+                    items: { $ref: '#/components/schemas/Collection' }
+                  blocks:
+                    type: array
+                    items: { $ref: '#/components/schemas/Block' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /collections/{collection}:
+    parameters:
+      - $ref: '#/components/parameters/Collection'
+    get:
+      operationId: getCollection
+      summary: One collection and its field schema
+      responses:
+        '200':
+          description: The collection.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [collection]
+                properties:
+                  collection: { $ref: '#/components/schemas/Collection' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /collections/{collection}/documents:
+    parameters:
+      - $ref: '#/components/parameters/Collection'
+    get:
+      operationId: listDocuments
+      summary: The published documents of a collection, newest first
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: cursor
+          in: query
+          description: The `nextCursor` of the previous page. Opaque.
+          schema: { type: string }
+        - name: tag
+          in: query
+          description: Only the documents with this tag in a `tags` field.
+          schema: { type: string }
+        - name: sort
+          in: query
+          description: |
+            `publishedAt` or a simple field (text, textarea, slug, date, number, select, boolean).
+            A leading `-` reverses the order. Default: the order of the collection.
+          schema: { type: string, examples: ['-publishedDate', 'title'] }
+      responses:
+        '200':
+          description: One page of documents.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [documents, total, nextCursor]
+                properties:
+                  documents:
+                    type: array
+                    items: { $ref: '#/components/schemas/Document' }
+                  total:
+                    type: integer
+                    description: The number of documents that match, on all pages.
+                  nextCursor:
+                    type: [string, 'null']
+        '304': { $ref: '#/components/responses/NotModified' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /collections/{collection}/documents/{slug}:
+    parameters:
+      - $ref: '#/components/parameters/Collection'
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+    get:
+      operationId: getDocumentBySlug
+      summary: One published document by slug
+      responses:
+        '200': { $ref: '#/components/responses/Document' }
+        '301':
+          description: The slug changed. `Location` is the API URL of the new slug.
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, slug]
+                properties:
+                  error: { const: moved }
+                  message: { type: string }
+                  slug: { type: string }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /documents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      operationId: getDocumentById
+      summary: One published document by id
+      responses:
+        '200': { $ref: '#/components/responses/Document' }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /media/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      operationId: getMedia
+      summary: The metadata of one media item
+      responses:
+        '200':
+          description: The media item.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [media]
+                properties:
+                  media:
+                    allOf:
+                      - $ref: '#/components/schemas/Media'
+                      - type: object
+                        required: [size, createdAt]
+                        properties:
+                          size: { type: integer, description: Bytes of the original file. }
+                          createdAt: { type: string, format: date-time }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /preview/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      operationId: getPreview
+      summary: The current draft of a document, with a preview token
+      description: |
+        CORS allows only GENGA_PREVIEW_ORIGINS. The answer is never cached. Without
+        GENGA_SECRET on the server, this endpoint answers 404.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The `genga-token` parameter of the preview URL. Valid 10 minutes, for this document only.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The draft. `versionId` is null.
+          headers:
+            Cache-Control:
+              schema: { const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document]
+                properties:
+                  document: { $ref: '#/components/schemas/Document' }
+        '401':
+          description: The token is missing, wrong or expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+components:
+  parameters:
+    Collection:
+      name: collection
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z][a-z0-9-]*$' }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  headers:
+    ETag:
+      description: Send it back in If-None-Match to get a 304.
+      schema: { type: string }
+  responses:
+    Document:
+      description: One document.
+      headers:
+        ETag: { $ref: '#/components/headers/ETag' }
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [document]
+            properties:
+              document: { $ref: '#/components/schemas/Document' }
+    NotModified:
+      description: The ETag in If-None-Match is current. No body.
+    BadRequest:
+      description: A query parameter is not valid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such collection, published document or media.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests from this address.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [bad_request, invalid_token, not_found, method_not_allowed, rate_limited, internal, moved]
+        message: { type: string }
+    Field:
+      type: object
+      required: [type]
+      description: A field definition, as in the config file. `array` and `group` have nested `fields`.
+      properties:
+        type:
+          type: string
+          enum: [text, textarea, slug, number, boolean, select, date, url, media, richText, tags, array, blocks, group]
+        label: { type: string }
+        description: { type: string }
+        required: { type: boolean }
+      additionalProperties: true
+    Collection:
+      type: object
+      required: [name, label, labelSingular, titleField, path, fields]
+      properties:
+        name: { type: string }
+        label: { type: string }
+        labelSingular: { type: string }
+        titleField: { type: string }
+        path:
+          type: string
+          description: The site path of a document, with `{slug}` in place of the slug.
+          examples: ['/blog/{slug}']
+        fields:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/Field' }
+    Block:
+      type: object
+      required: [type, label, fields]
+      properties:
+        type: { type: string }
+        label: { type: string }
+        description: { type: string }
+        fields:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/Field' }
+    Media:
+      type: object
+      required: [id, url, filename, mime, alt, width, height, sizes]
+      properties:
+        id: { type: string, format: uuid }
+        url: { type: string, format: uri }
+        filename: { type: string }
+        mime: { type: string }
+        alt: { type: string }
+        width: { type: [integer, 'null'] }
+        height: { type: [integer, 'null'] }
+        sizes:
+          type: array
+          items:
+            type: object
+            required: [width, url]
+            properties:
+              width: { type: integer }
+              url: { type: string, format: uri }
+    Document:
+      type: object
+      required: [id, collection, slug, path, versionId, publishedAt, data]
+      properties:
+        id: { type: string, format: uuid }
+        collection: { type: string }
+        slug: { type: string }
+        path: { type: string, description: The URL of the document on the site. }
+        versionId:
+          type: [string, 'null']
+          format: uuid
+          description: The published version. Null in a preview.
+        publishedAt: { type: [string, 'null'], format: date-time }
+        data:
+          type: object
+          description: |
+            The field values. A media field is a Media object or null. A richText field is the
+            TipTap JSON plus `html`, the sanitized HTML, or null. A blocks field is a list of objects with `_id`, `_type` and
+            the block fields.
+          additionalProperties: true

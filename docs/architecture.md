@@ -51,13 +51,16 @@ packages/genga
       admin.css        compiled to dist/admin.css with Tailwind v4 at build time
     render/            entry "genga/render": RenderBlocks, RichText, usePreviewData
     client/            entry "genga/client": the same renderers, the preview bridge, apiRequest
+    preview/           entry "genga/preview": connectPreview and the bridge, no React
+    rich-text-html.ts  TipTap JSON to an HTML string, the same markup as <RichText>
+    public-data.ts     the public API shape: absolute media URLs, rich text HTML
   migrations/          plain .mjs migrations and their runner (shipped as is)
   bin/genga-migrate.mjs
 ```
 
 The app owns the config: its collections, its blocks (React components of the site) and
-its access overrides. The app mounts the admin route modules under `/admin/*`, the API
-under `/admin/api/*` and the media route under `/media/*`. See
+its access overrides. The app mounts the admin route modules under `/admin/*` (or the
+`adminPath` option), the API under `/admin/api/*` and the media route under `/media/*`. See
 [examples/react-router](../examples/react-router) for a complete app.
 
 ## Data model (Postgres)
@@ -130,7 +133,7 @@ gets `Cache-Control: public, max-age=0, must-revalidate` with an `ETag` from the
 ## Operations
 
 - One replica only: the published cache, the login rate limit and the local media volume
-  are local to the process.
+  are local to the process. This also holds for the headless server.
 - Back up the database (`pg_dump`) and the media directory together. A media row without its
   file answers 404; a file without its row is never served.
 - Without `DATABASE_URL`, the app can keep the CMS off: content routes use a fallback and
@@ -152,7 +155,10 @@ components fill the gaps:
 | Segmented control    | `admin/ui/segmented-control.tsx`: HeroUI `ToggleButtonGroup`                      |
 | Rich text editor     | `admin/editor/rich-text-input.tsx`: TipTap + HeroUI `Toolbar`/`ToggleButton`      |
 
-## Planned: the headless server
+## The headless server
 
-Phase 2 adds `apps/server`, a Docker image that runs Genga as a standalone headless CMS.
-See [headless server](./headless-server.md).
+`apps/server` runs Genga as a standalone headless CMS, published as the Docker image
+`ghcr.io/sakuga-software/genga`. It is a small React Router app that imports `genga` like any
+consumer. It mounts the admin, a public read API (`/api/v1`), `/media/*` and health checks.
+The config is a JSON or `.mjs` file, with blocks as schemas only. See
+[headless server](./headless-server.md) and [public API](./api.md).

@@ -44,6 +44,27 @@ export const gengaConfig = defineConfig({
 
 The slugs `admin`, `media` and `api` are reserved.
 
+### A preview on another origin
+
+```ts
+posts: {
+  path: (value) => `/blog/${value}`,
+  previewUrl: ({ slug }) => `https://www.example.com/blog/${slug}`,
+  // …
+}
+```
+
+```ts
+createGenga(gengaConfig, {
+  // …
+  previewOrigins: ['https://www.example.com'],
+  previewSecret: process.env.GENGA_SECRET,
+  mediaResourcePolicy: 'cross-origin',
+});
+```
+
+See [preview bridge](./preview-bridge.md#a-site-on-another-origin).
+
 ### Collection options
 
 | Option          | Purpose                                                                     |
@@ -52,6 +73,7 @@ The slugs `admin`, `media` and `api` are reserved.
 | `labelSingular` | Singular name, for example in "New: page".                                  |
 | `titleField`    | The field that names a document in lists.                                   |
 | `path(slug)`    | Public URL of a document. Used for previews, redirects and the sitemap.     |
+| `previewUrl`    | The preview page, on the site origin or another one. `false` hides it.      |
 | `sortField`     | Field that sorts the public lists, newest first. Default: publication date. |
 | `access`        | Overrides of the access matrix (see below).                                 |
 | `fields`        | The fields.                                                                 |
@@ -120,18 +142,22 @@ export const genga = createGenga(gengaConfig, {
 Keep one instance per process. In development, store it on `globalThis`, because Vite
 reloads modules. See `examples/react-router/app/.server/genga.ts`.
 
-| Option           | Default                         | Purpose                                                           |
-| ---------------- | ------------------------------- | ----------------------------------------------------------------- |
-| `databaseUrl`    | required                        | Postgres URL.                                                     |
-| `siteUrl`        | required                        | Public origin. Setup links, sitemap. Its origin can always write. |
-| `allowedOrigins` | `[]`                            | More origins that can send writes.                                |
-| `mediaDir`       | `./data/media`                  | Directory of the local storage adapter.                           |
-| `storage`        | local adapter                   | A `StorageAdapter`.                                               |
-| `adminEmail`     | `null`                          | Email of the first admin, shown in the setup form.                |
-| `secureCookies`  | `NODE_ENV === 'production'`     | `__Host-genga` cookie with `Secure`.                              |
-| `trustedProxies` | `GENGA_TRUSTED_PROXIES`, else 1 | Proxies in front of the app that append to `X-Forwarded-For`.     |
-| `maxConnections` | 10                              | Size of the Postgres pool.                                        |
-| `logger`         | `console`                       | `{ info, warn, error }`.                                          |
+| Option                | Default                           | Purpose                                                                                             |
+| --------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `databaseUrl`         | required                          | Postgres URL.                                                                                       |
+| `adminPath`           | `GENGA_ADMIN_PATH`, else `/admin` | Base path of the admin. The admin API is under `<adminPath>/api`.                                   |
+| `siteUrl`             | required                          | Public origin. Setup links, sitemap. Its origin can always write.                                   |
+| `allowedOrigins`      | `[]`                              | More origins that can send writes.                                                                  |
+| `mediaDir`            | `./data/media`                    | Directory of the local storage adapter.                                                             |
+| `storage`             | local adapter                     | A `StorageAdapter`.                                                                                 |
+| `adminEmail`          | `null`                            | Email of the first admin, shown in the setup form.                                                  |
+| `secureCookies`       | `NODE_ENV === 'production'`       | `__Host-genga` cookie with `Secure`.                                                                |
+| `trustedProxies`      | `GENGA_TRUSTED_PROXIES`, else 1   | Proxies in front of the app that append to `X-Forwarded-For`.                                       |
+| `previewOrigins`      | `GENGA_PREVIEW_ORIGINS`           | Origins of preview pages on another origin. Read-only access.                                       |
+| `previewSecret`       | `GENGA_SECRET`                    | Signs the preview tokens. 32 characters or more.                                                    |
+| `mediaResourcePolicy` | `same-origin`                     | `Cross-Origin-Resource-Policy` of `/media/*`. Use `cross-origin` when other origins show the media. |
+| `maxConnections`      | 10                                | Size of the Postgres pool.                                                                          |
+| `logger`              | `console`                         | `{ info, warn, error }`.                                                                            |
 
 ## Environment variables (example app)
 
@@ -166,7 +192,9 @@ route('/admin', 'routes/admin/shell.tsx', [
 route('/media/*', 'routes/media.ts'),
 ```
 
-The admin paths `/admin` and `/admin/api` are fixed in v1.
+To mount the admin elsewhere, set `adminPath` (or `GENGA_ADMIN_PATH`), for example `/cms`,
+and use the same path in `routes.ts`: `route('/cms/api/*', …)` and `route('/cms', …)`. The
+admin pages read the path from their loader data.
 
 The admin route `shell.tsx` loads the stylesheet:
 
@@ -205,11 +233,12 @@ other users from `/admin/users`.
 
 ## Entries
 
-| Entry             | Content                                                               | Runs on |
-| ----------------- | --------------------------------------------------------------------- | ------- |
-| `genga`           | field builders, `defineConfig`, `defineBlock`, access, schemas        | both    |
-| `genga/server`    | `createGenga()`: database, auth, documents, media, API, admin loaders | server  |
-| `genga/admin`     | admin route components                                                | both    |
-| `genga/admin.css` | compiled admin stylesheet                                             | browser |
-| `genga/render`    | `RenderBlocks`, `RichText`, `usePreviewData`                          | both    |
-| `genga/client`    | `RenderBlocks`, `RichText`, `usePreviewData`, `apiRequest`            | both    |
+| Entry             | Content                                                                      | Runs on |
+| ----------------- | ---------------------------------------------------------------------------- | ------- |
+| `genga`           | field builders, `defineConfig`, `defineBlock`, access, schemas               | both    |
+| `genga/server`    | `createGenga()`: database, auth, documents, media, API, admin loaders        | server  |
+| `genga/admin`     | admin route components                                                       | both    |
+| `genga/admin.css` | compiled admin stylesheet                                                    | browser |
+| `genga/render`    | `RenderBlocks`, `RichText`, `usePreviewData`                                 | both    |
+| `genga/client`    | `RenderBlocks`, `RichText`, `usePreviewData`, `connectPreview`, `apiRequest` | both    |
+| `genga/preview`   | `connectPreview`, `richTextToHtml`: no React, no dependency                  | browser |
