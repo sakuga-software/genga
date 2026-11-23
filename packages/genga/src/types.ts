@@ -1,0 +1,120 @@
+import type { Role } from './access';
+import type { MediaObject } from './fields/types';
+
+/**
+ * - `draft`: never published.
+ * - `published`: the published version matches the draft.
+ * - `changed`: published, and the draft has later changes.
+ */
+export type DocumentStatus = 'draft' | 'published' | 'changed';
+
+export type PublicUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  disabled: boolean;
+  createdAt: string;
+};
+
+export type DocumentSummary = {
+  id: string;
+  collection: string;
+  slug: string;
+  title: string;
+  status: DocumentStatus;
+  updatedAt: string;
+  publishedAt: string | null;
+  createdBy: string | null;
+  authorName: string | null;
+};
+
+export type AdminDocument = DocumentSummary & {
+  draft: Record<string, unknown>;
+  draftRev: number;
+  /**
+   * The slug of the URL that the last publish made live, also after an unpublish.
+   * After the first publish, a new slug in the draft waits for the next publish.
+   */
+  publishedSlug: string | null;
+  previewPath: string;
+  media: Record<string, MediaObject>;
+  canPublish: boolean;
+  canDelete: boolean;
+};
+
+export type VersionSummary = {
+  id: string;
+  kind: 'draft' | 'published' | 'restored';
+  note: string | null;
+  createdAt: string;
+  authorName: string | null;
+  isPublished: boolean;
+};
+
+/** A published document, or a draft in preview mode, with media objects in place of ids. */
+export type PublishedDocument<T = Record<string, unknown>> = {
+  id: string;
+  collection: string;
+  slug: string;
+  versionId: string | null;
+  publishedAt: string | null;
+  data: T;
+};
+
+export type MediaItem = MediaObject & {
+  size: number;
+  createdAt: string;
+};
+
+export type PreviewMessage =
+  | { type: 'genga:ready'; documentId: string }
+  | { type: 'genga:hello'; documentId: string }
+  | { type: 'genga:draft'; documentId: string; data: Record<string, unknown> }
+  | { type: 'genga:select'; documentId: string; blockId: string; index: number }
+  | { type: 'genga:focus'; documentId: string; blockId: string | null };
+
+export type CollectionNav = {
+  name: string;
+  label: string;
+  labelSingular: string;
+  canCreate: boolean;
+};
+
+export type AppLayoutData = {
+  user: PublicUser;
+  collections: CollectionNav[];
+  canManageUsers: boolean;
+  canDeleteMedia: boolean;
+};
+
+export type DashboardData = {
+  counts: Record<string, Record<DocumentStatus, number>>;
+  recent: DocumentSummary[];
+  mediaCount: number;
+};
+
+export type CollectionPageData = {
+  collection: CollectionNav;
+  documents: DocumentSummary[];
+  search: string;
+  status: DocumentStatus | 'all';
+};
+
+export type DocumentPageData = {
+  document: AdminDocument;
+  versions: VersionSummary[];
+  schema: import('./config').SerializedSchema;
+};
+
+export type MediaPageData = { media: MediaItem[]; canDelete: boolean; canUpload: boolean };
+
+export type UsersPageData = { users: PublicUser[]; currentUserId: string };
+
+export type LoginPageData = { needsSetup: boolean; next: string };
+
+export type SetupPageData =
+  | { valid: true; kind: 'setup' | 'invite'; email: string | null; name: string; token: string }
+  | { valid: false };
+
+export type FormResult = { error: string } | null;

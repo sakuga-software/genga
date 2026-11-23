@@ -1,0 +1,113 @@
+{
+  "name": "genga",
+  "version": "0.1.0",
+  "description": "A content system that lives inside your React Router app: admin, roles, versions, media library and a live editor of your own React blocks.",
+  "keywords": [
+    "cms",
+    "headless",
+    "live-preview",
+    "postgres",
+    "react",
+    "react-router",
+    "ssr"
+  ],
+  "homepage": "https://github.com/sakuga-software/genga#readme",
+  "bugs": {
+    "url": "https://github.com/sakuga-software/genga/issues"
+  },
+  "license": "MIT",
+  "author": "Sakuga Software",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sakuga-software/genga.git",
+    "directory": "packages/genga"
+  },
+  "bin": {
+    "genga-migrate": "./bin/genga-migrate.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "migrations"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.mts",
+      "default": "./dist/server.mjs"
+    },
+    "./admin": {
+      "types": "./dist/admin.d.mts",
+      "default": "./dist/admin.mjs"
+    },
+    "./admin.css": "./dist/admin.css",
+    "./render": {
+      "types": "./dist/render.d.mts",
+      "default": "./dist/render.mjs"
+    },
+    "./client": {
+      "types": "./dist/client.d.mts",
+      "default": "./dist/client.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown && pnpm run build:css",
+    "build:css": "tailwindcss --input src/admin/admin.css --output dist/admin.css --minify",
+    "migrate": "node ./bin/genga-migrate.mjs",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@heroui/react": "^3.2.7",
+    "@internationalized/date": "^3.12.4",
+    "@react-aria/ssr": "^3.10.1",
+    "@react-aria/utils": "^3.34.1",
+    "@tiptap/core": "^3.35.0",
+    "@tiptap/extensions": "^3.35.0",
+    "@tiptap/pm": "^3.35.0",
+    "@tiptap/react": "^3.35.0",
+    "@tiptap/starter-kit": "^3.35.0",
+    "file-type": "^22.3.0",
+    "lucide-react": "^1.72.0",
+    "postgres": "^4.1.1",
+    "react-aria": "^3.53.1",
+    "react-aria-components": "^1.22.1",
+    "sharp": "^0.35.5",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@heroui/styles": "^3.2.7",
+    "@tailwindcss/cli": "^4.1.18",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.18.4",
+    "tailwindcss": "^4.1.18",
+    "tsdown": "^0.23.7",
+    "typescript": "^5",
+    "vitest": "^5.1.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.18.4"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

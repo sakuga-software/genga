@@ -1,0 +1,447 @@
+import { can, isOwnOnly, type DocumentAction } from '../access';
+import { RESERVED_SLUGS, type CollectionConfig } from '../config';
+import { defaultValues, SLUG_PATTERN, tolerantRead, validate } from '../fields/schema';
+import { collectMediaIds } from '../populate';
+import { slugify } from '../slugify';
+import { isUuid } from '../uuid';
+import type { AdminDocument, DocumentStatus, DocumentSummary, PublicUser, VersionSummary } from '../types';
+import { audit } from './auth';
+import type { GengaContext } from './context';
+import { badRequest, forbidden, GengaError, isUniqueViolation, notFound } from './errors';
+import { loadMediaMap } from './media';
+
+type DocumentRow = {
+  id: string;
+  collection: string;
+  slug: string;
+  draft: Record<string, unknown>;
+  draft_rev: number;
+  draft_updated_at: Date;
+  published_version_id: string | null;
+  published_rev: number | null;
+  published_at: Date | null;
+  first_published_at: Date | null;
+  created_by: string | null;
+  author_name: string | null;
+  deleted_at: Date | null;
+};
+
+export type ListOptions = {
+  search?: string;
+  status?: DocumentStatus | 'all';
+  limit?: number;
+  offset?: number;
+};
+
+function statusOf(row: Pick<DocumentRow, 'published_version_id' | 'published_rev' | 'draft_rev'>): DocumentStatus {
+  if (!row.published_version_id) return 'draft';
+  return row.published_rev === row.draft_rev ? 'published' : 'changed';
+}
+
+function conflict(draftRev: number | null) {
+  return new GengaError(409, 'conflict', 'Ce document a changé depuis votre dernière lecture.', { draftRev });
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+export function createDocuments(ctx: GengaContext) {
+  const { sql } = ctx;
+
+  function collectionOf(name: string): CollectionConfig {
+    const collection = ctx.config.collections[name];
+    if (!collection) throw notFound(`Collection inconnue : ${name}`);
+    return collection;
+  }
+
+  function assertCan(
+    user: PublicUser,
+    action: DocumentAction,
+    row?: Pick<DocumentRow, 'collection' | 'created_by'>,
+    collection?: string,
+  ) {
+    const name = row?.collection ?? collection ?? '';
+    const access = collectionOf(name).access;
+    if (!can(user, action, access, row ? { createdBy: row.created_by } : undefined)) throw forbidden();
+  }
+
+  function summarize(row: DocumentRow): DocumentSummary {
+    const collection = collectionOf(row.collection);
+    const title = row.draft?.[collection.titleField];
+    return {
+      id: row.id,
+      collection: row.collection,
+      slug: row.slug,
+      title: typeof title === 'string' && title.trim() ? title : 'Sans titre',
+      status: statusOf(row),
+      updatedAt: row.draft_updated_at.toISOString(),
+      publishedAt: row.published_at?.toISOString() ?? null,
+      createdBy: row.created_by,
+      authorName: row.author_name,
+    };
+  }
+
+  async function findRow(id: string, lock = false): Promise<DocumentRow> {
+    if (!isUuid(id)) throw notFound();
+    const rows = lock
+      ? await sql<DocumentRow[]>`
+          SELECT d.*, NULL::text AS author_name FROM genga_documents d
+          WHERE d.id = ${id} AND d.deleted_at IS NULL FOR UPDATE`
+      : await sql<DocumentRow[]>`
+          SELECT d.*, u.name AS author_name FROM genga_documents d
+          LEFT JOIN genga_users u ON u.id = d.created_by
+          WHERE d.id = ${id} AND d.deleted_at IS NULL`;
+    if (!rows[0]) throw notFound('Document introuvable.');
+    return rows[0];
+  }
+
+  function checkSlug(value: unknown): string {
+    const slug = typeof value === 'string' ? value.trim() : '';
+    if (!SLUG_PATTERN.test(slug)) throw badRequest('Slug invalide : minuscules, chiffres et tirets.');
+    if (RESERVED_SLUGS.has(slug)) throw badRequest(`Le slug « ${slug} » est réservé.`);
+    return slug;
+  }
+
+  async function list(user: PublicUser, collectionName: string, options: ListOptions = {}): Promise<DocumentSummary[]> {
+    const collection = collectionOf(collectionName);
+    assertCan(user, 'read', undefined, collectionName);
+    const ownOnly = isOwnOnly(user, collection.access);
+    const search = options.search?.trim() ? `%${escapeLike(options.search.trim())}%` : null;
+    const status = options.status ?? 'all';
+    const rows = await sql<DocumentRow[]>`
+      SELECT d.*, u.name AS author_name FROM genga_documents d
+      LEFT JOIN genga_users u ON u.id = d.created_by
+      WHERE d.collection = ${collectionName} AND d.deleted_at IS NULL
+      ${ownOnly ? sql`AND d.created_by = ${user.id}` : sql``}
+      ${search ? sql`AND (d.draft->>${collection.titleField} ILIKE ${search} OR d.slug ILIKE ${search})` : sql``}
+      ${status === 'draft' ? sql`AND d.published_version_id IS NULL` : sql``}
+      ${status === 'published' ? sql`AND d.published_version_id IS NOT NULL AND d.published_rev = d.draft_rev` : sql``}
+      ${status === 'changed' ? sql`AND d.published_version_id IS NOT NULL AND d.published_rev <> d.draft_rev` : sql``}
+      ORDER BY d.draft_updated_at DESC
+      LIMIT ${Math.min(options.limit ?? 100, 500)} OFFSET ${options.offset ?? 0}
+    `;
+    return rows.map(summarize);
+  }
+
+  async function counts(user: PublicUser): Promise<Record<string, Record<DocumentStatus, number>>> {
+    const result: Record<string, Record<DocumentStatus, number>> = {};
+    for (const [name, collection] of Object.entries(ctx.config.collections)) {
+      result[name] = { draft: 0, published: 0, changed: 0 };
+      if (!can(user, 'read', collection.access)) continue;
+      const ownOnly = isOwnOnly(user, collection.access);
+      const rows = await sql<
+        { published_version_id: string | null; published_rev: number | null; draft_rev: number }[]
+      >`
+        SELECT published_version_id, published_rev, draft_rev FROM genga_documents
+        WHERE collection = ${name} AND deleted_at IS NULL
+        ${ownOnly ? sql`AND created_by = ${user.id}` : sql``}
+      `;
+      for (const row of rows) result[name][statusOf(row)] += 1;
+    }
+    return result;
+  }
+
+  async function get(user: PublicUser, id: string): Promise<AdminDocument> {
+    const row = await findRow(id);
+    assertCan(user, 'read', row);
+    const collection = collectionOf(row.collection);
+    const draft = tolerantRead(collection.fields, row.draft, ctx.blocks);
+    const media = await loadMediaMap(ctx, collection.fields, draft);
+    return {
+      ...summarize(row),
+      draft,
+      draftRev: row.draft_rev,
+      publishedSlug: row.first_published_at ? row.slug : null,
+      previewPath: collection.path(row.slug),
+      media: Object.fromEntries(media),
+      canPublish: can(user, 'publish', collection.access, { createdBy: row.created_by }),
+      canDelete: can(user, 'delete', collection.access, { createdBy: row.created_by }),
+    };
+  }
+
+  async function uniqueSlug(collectionName: string, base: string): Promise<string> {
+    const root = RESERVED_SLUGS.has(base) || !base ? `${base || 'document'}-1` : base;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const candidate = attempt === 0 ? root : `${root}-${attempt + 1}`;
+      const [taken] = await sql`
+        SELECT 1 FROM genga_documents WHERE collection = ${collectionName} AND slug = ${candidate} AND deleted_at IS NULL
+      `;
+      if (!taken) return candidate;
+    }
+    return `${root}-${crypto.randomUUID().slice(0, 8)}`;
+  }
+
+  async function create(user: PublicUser, collectionName: string, input: Record<string, unknown> = {}) {
+    const collection = collectionOf(collectionName);
+    assertCan(user, 'create', undefined, collectionName);
+    const checked = validate(collection.fields, { ...defaultValues(collection.fields), ...input }, 'draft', ctx.blocks);
+    if (!checked.ok) throw badRequest('Données invalides.', checked.issues);
+    const data = checked.data;
+    const title = typeof data[collection.titleField] === 'string' ? (data[collection.titleField] as string) : '';
+    const slug = await uniqueSlug(collectionName, (data.slug as string) || slugify(title) || 'sans-titre');
+    data.slug = slug;
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO genga_documents (collection, slug, draft, created_by, draft_updated_by)
+      VALUES (${collectionName}, ${slug}, ${sql.json(data as never)}, ${user.id}, ${user.id})
+      RETURNING id
+    `;
+    await audit(ctx, user.id, 'document.create', { collection: collectionName, documentId: row.id });
+    return { id: row.id, slug };
+  }
+
+  /** The slug of a document that was ever published changes only at publish, with a redirect. */
+  async function saveDraft(user: PublicUser, id: string, input: unknown, draftRev: number) {
+    if (!isUuid(id)) throw notFound();
+    const result = await sql.begin(async (tx) => {
+      const [row] = await tx<DocumentRow[]>`
+        SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
+      `;
+      if (!row) throw notFound('Document introuvable.');
+      assertCan(user, 'update', row);
+      if (row.draft_rev !== draftRev) throw conflict(row.draft_rev);
+      const collection = collectionOf(row.collection);
+      const checked = validate(collection.fields, input, 'draft', ctx.blocks);
+      if (!checked.ok) throw badRequest('Données invalides.', checked.issues);
+      const data = checked.data;
+
+      let slug = row.slug;
+      let slugError: string | null = null;
+      const wanted = typeof data.slug === 'string' ? data.slug.trim() : '';
+      if (!row.first_published_at && wanted && wanted !== row.slug) {
+        if (RESERVED_SLUGS.has(wanted)) {
+          slugError = `Le slug « ${wanted} » est réservé.`;
+        } else {
+          try {
+            await tx.savepoint((sp) => sp`UPDATE genga_documents SET slug = ${wanted} WHERE id = ${id}`);
+            slug = wanted;
+          } catch (error) {
+            if (!isUniqueViolation(error)) throw error;
+            slugError = `Le slug « ${wanted} » est déjà utilisé.`;
+          }
+        }
+      }
+
+      const [updated] = await tx<
+        { draft_rev: number; published_rev: number | null; published_version_id: string | null }[]
+      >`
+        UPDATE genga_documents
+        SET draft = ${tx.json(data as never)}, draft_rev = draft_rev + 1, draft_updated_at = now(),
+          draft_updated_by = ${user.id}
+        WHERE id = ${id}
+        RETURNING draft_rev, published_rev, published_version_id
+      `;
+      return { updated, slug, slugError, collection };
+    });
+    return {
+      draftRev: result.updated.draft_rev,
+      status: statusOf(result.updated),
+      slug: result.slug,
+      slugError: result.slugError,
+      previewPath: result.collection.path(result.slug),
+      savedAt: new Date().toISOString(),
+    };
+  }
+
+  async function publish(user: PublicUser, id: string, draftRev: number) {
+    if (!isUuid(id)) throw notFound();
+    const result = await sql.begin(async (tx) => {
+      const [row] = await tx<DocumentRow[]>`
+        SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
+      `;
+      if (!row) throw notFound('Document introuvable.');
+      assertCan(user, 'publish', row);
+      if (row.draft_rev !== draftRev) throw conflict(row.draft_rev);
+      const collection = collectionOf(row.collection);
+      const checked = validate(collection.fields, row.draft, 'publish', ctx.blocks);
+      if (!checked.ok)
+        throw new GengaError(422, 'invalid', 'Corrigez les champs signalés avant de publier.', checked.issues);
+      const slug = checkSlug(checked.data.slug || row.slug);
+      // FOR SHARE makes a concurrent media delete wait for this publish, then see the new reference.
+      const mediaIds = [...new Set(collectMediaIds(collection.fields, checked.data, ctx.blocks).filter(isUuid))];
+      if (mediaIds.length) {
+        const found = await tx<{ id: string }[]>`
+          SELECT id FROM genga_media WHERE id = ANY(${mediaIds}::uuid[]) FOR SHARE
+        `;
+        const present = new Set(found.map((media) => media.id));
+        const missing = mediaIds.filter((mediaId) => !present.has(mediaId));
+        if (missing.length) {
+          throw new GengaError(
+            422,
+            'missing_media',
+            'Un média de ce document a été supprimé. Remplacez-le avant de publier.',
+            {
+              mediaIds: missing,
+            },
+          );
+        }
+      }
+
+      if (slug !== row.slug) {
+        try {
+          await tx`UPDATE genga_documents SET slug = ${slug} WHERE id = ${id}`;
+        } catch (error) {
+          if (isUniqueViolation(error))
+            throw new GengaError(409, 'slug_taken', `Le slug « ${slug} » est déjà utilisé.`);
+          throw error;
+        }
+        if (row.first_published_at) {
+          await tx`UPDATE genga_redirects SET to_slug = ${slug} WHERE collection = ${row.collection} AND to_slug = ${row.slug}`;
+          await tx`
+            INSERT INTO genga_redirects (collection, from_slug, to_slug) VALUES (${row.collection}, ${row.slug}, ${slug})
+            ON CONFLICT (collection, from_slug) DO UPDATE SET to_slug = EXCLUDED.to_slug
+          `;
+        }
+      }
+      await tx`DELETE FROM genga_redirects WHERE collection = ${row.collection} AND from_slug = ${slug}`;
+
+      const [version] = await tx<{ id: string }[]>`
+        INSERT INTO genga_versions (document_id, kind, slug, data, created_by)
+        VALUES (${id}, 'published', ${slug}, ${tx.json(checked.data as never)}, ${user.id})
+        RETURNING id
+      `;
+      const [updated] = await tx<{ published_at: Date }[]>`
+        UPDATE genga_documents
+        SET published_version_id = ${version.id}, published_rev = draft_rev,
+          published_at = COALESCE(published_at, now()), first_published_at = COALESCE(first_published_at, now())
+        WHERE id = ${id}
+        RETURNING published_at
+      `;
+      return {
+        collection: row.collection,
+        slug,
+        previousSlug: row.first_published_at && slug !== row.slug ? row.slug : null,
+        versionId: version.id,
+        publishedAt: updated.published_at.toISOString(),
+        previewPath: collection.path(slug),
+      };
+    });
+    ctx.cache.invalidate(result.collection);
+    await audit(ctx, user.id, 'document.publish', {
+      collection: result.collection,
+      documentId: id,
+      detail: { versionId: result.versionId, previousSlug: result.previousSlug },
+    });
+    return { ...result, status: 'published' as DocumentStatus };
+  }
+
+  async function unpublish(user: PublicUser, id: string) {
+    const row = await findRow(id);
+    assertCan(user, 'publish', row);
+    await sql`
+      UPDATE genga_documents SET published_version_id = NULL, published_rev = NULL, published_at = NULL
+      WHERE id = ${id}
+    `;
+    ctx.cache.invalidate(row.collection);
+    await audit(ctx, user.id, 'document.unpublish', { collection: row.collection, documentId: id });
+    return { status: 'draft' as DocumentStatus };
+  }
+
+  async function saveVersion(user: PublicUser, id: string, note: unknown) {
+    const row = await findRow(id);
+    assertCan(user, 'update', row);
+    const text = typeof note === 'string' ? note.trim().slice(0, 200) : '';
+    const [version] = await sql<{ id: string }[]>`
+      INSERT INTO genga_versions (document_id, kind, slug, data, note, created_by)
+      VALUES (${id}, 'draft', ${row.slug}, ${sql.json(row.draft as never)}, ${text || null}, ${user.id})
+      RETURNING id
+    `;
+    return { id: version.id };
+  }
+
+  async function versions(user: PublicUser, id: string): Promise<VersionSummary[]> {
+    const row = await findRow(id);
+    assertCan(user, 'read', row);
+    const rows = await sql<
+      { id: string; kind: VersionSummary['kind']; note: string | null; created_at: Date; author_name: string | null }[]
+    >`
+      SELECT v.id, v.kind, v.note, v.created_at, u.name AS author_name
+      FROM genga_versions v LEFT JOIN genga_users u ON u.id = v.created_by
+      WHERE v.document_id = ${id} ORDER BY v.created_at DESC LIMIT 100
+    `;
+    return rows.map((version) => ({
+      id: version.id,
+      kind: version.kind,
+      note: version.note,
+      createdAt: version.created_at.toISOString(),
+      authorName: version.author_name,
+      isPublished: version.id === row.published_version_id,
+    }));
+  }
+
+  /**
+   * Copies a version into the draft. It does not publish. The current draft is kept
+   * as a version first, so the restore loses no work.
+   */
+  async function restore(user: PublicUser, id: string, versionId: string, draftRev: number) {
+    if (!isUuid(id) || !isUuid(versionId)) throw notFound('Version introuvable.');
+    const result = await sql.begin(async (tx) => {
+      const [row] = await tx<DocumentRow[]>`
+        SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
+      `;
+      if (!row) throw notFound('Document introuvable.');
+      assertCan(user, 'update', row);
+      if (row.draft_rev !== draftRev) throw conflict(row.draft_rev);
+      const [version] = await tx<{ data: Record<string, unknown> }[]>`
+        SELECT data FROM genga_versions WHERE id = ${versionId} AND document_id = ${id}
+      `;
+      if (!version) throw notFound('Version introuvable.');
+      const collection = collectionOf(row.collection);
+      const data = tolerantRead(collection.fields, version.data, ctx.blocks);
+      // now() is the same for the whole transaction: clock_timestamp() keeps the two versions in order.
+      await tx`
+        INSERT INTO genga_versions (document_id, kind, slug, data, note, created_by, created_at)
+        VALUES (${id}, 'draft', ${row.slug}, ${tx.json(row.draft as never)}, 'Avant restauration', ${user.id}, clock_timestamp())
+      `;
+      const [updated] = await tx<
+        { draft_rev: number; published_rev: number | null; published_version_id: string | null }[]
+      >`
+        UPDATE genga_documents
+        SET draft = ${tx.json(data as never)}, draft_rev = draft_rev + 1, draft_updated_at = now(), draft_updated_by = ${user.id}
+        WHERE id = ${id}
+        RETURNING draft_rev, published_rev, published_version_id
+      `;
+      await tx`
+        INSERT INTO genga_versions (document_id, kind, slug, data, note, created_by, created_at)
+        VALUES (${id}, 'restored', ${row.slug}, ${tx.json(data as never)}, ${`Restaurée depuis ${versionId.slice(0, 8)}`}, ${user.id}, clock_timestamp())
+      `;
+      return { collection: row.collection, updated, data };
+    });
+    await audit(ctx, user.id, 'document.restore', {
+      collection: result.collection,
+      documentId: id,
+      detail: { versionId },
+    });
+    return { draftRev: result.updated.draft_rev, status: statusOf(result.updated), draft: result.data };
+  }
+
+  /** Unpublishes, then soft deletes. The slug becomes free again. */
+  async function remove(user: PublicUser, id: string) {
+    const row = await findRow(id);
+    assertCan(user, 'delete', row);
+    await sql`
+      UPDATE genga_documents
+      SET published_version_id = NULL, published_rev = NULL, published_at = NULL, deleted_at = now()
+      WHERE id = ${id}
+    `;
+    ctx.cache.invalidate(row.collection);
+    await audit(ctx, user.id, 'document.delete', { collection: row.collection, documentId: id });
+  }
+
+  return {
+    list,
+    counts,
+    get,
+    create,
+    saveDraft,
+    publish,
+    unpublish,
+    saveVersion,
+    versions,
+    restore,
+    remove,
+    collectionOf,
+  };
+}
+
+export type GengaDocuments = ReturnType<typeof createDocuments>;
