@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Self-hosted runners only: the organization has no hosted minutes.
+# Jobs skip pull requests from forks, because they would run outside code on our machines.
+# See CONTRIBUTING.md: the repository settings must also require approval for outside contributors.
+
+jobs:
+  lint:
+    name: Lint and format
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","sakuga-main"]') || fromJSON('["self-hosted","sakuga-light"]') }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format
+
+  typecheck:
+    name: Typecheck and build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","sakuga-main"]') || fromJSON('["self-hosted","sakuga-light"]') }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The example reads the types of the built package.
+      - run: pnpm build
+      - run: pnpm typecheck
+
+  test:
+    name: Tests (Postgres) and packed tarball
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ github.ref == 'refs/heads/main' && fromJSON('["self-hosted","sakuga-main"]') || fromJSON('["self-hosted","sakuga-linux"]') }}
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: genga
+          POSTGRES_PASSWORD: genga
+          POSTGRES_DB: genga
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U genga"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Point the tests at the Postgres service
+        run: |
+          base="postgres://genga:genga@localhost:${{ job.services.postgres.ports['5432'] }}"
+          echo "GENGA_TEST_ADMIN_URL=$base/genga" >> "$GITHUB_ENV"
+          echo "GENGA_TEST_DATABASE_URL=$base/genga_test" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=$base/genga" >> "$GITHUB_ENV"
+      - run: pnpm test
+      - run: pnpm test:pack

@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      tiptap:
+        patterns: ['@tiptap/*']
+      react-router:
+        patterns: ['react-router', '@react-router/*']
+      heroui:
+        patterns: ['@heroui/*', 'react-aria', 'react-aria-components', '@react-aria/*', '@internationalized/*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
