@@ -246,7 +246,7 @@ export function createAuth(ctx: GengaContext) {
         VALUES ('setup', ${hashToken(token)}, ${ctx.adminEmail}, ${new Date(Date.now() + 24 * 60 * 60_000)})
       `;
     });
-    const url = `${ctx.siteUrl}/admin/setup?token=${token}`;
+    const url = `${ctx.siteUrl}${ctx.adminPath}/setup?token=${token}`;
     ctx.log.info(`[genga] No user yet. Create the first admin within 24 hours: ${url}`);
     return token;
   }

@@ -8,12 +8,15 @@ export type BlockDefinition<S extends Fields = Fields> = {
   label: string;
   description?: string;
   fields: S;
-  component: ComponentType<FieldValues<S> & { _id: string; _type: string }>;
+  /** The React component of the site. A headless config has none: the block is a schema only. */
+  component?: ComponentType<FieldValues<S> & { _id: string; _type: string }>;
 };
 
 export function defineBlock<const S extends Fields>(block: BlockDefinition<S>): BlockDefinition<S> {
   return block;
 }
+
+export type PreviewUrlInput = { id: string; slug: string; collection: string; path: string };
 
 export type CollectionConfig = {
   label: string;
@@ -23,6 +26,12 @@ export type CollectionConfig = {
   titleField: string;
   /** Public URL of a published document. Genga uses it for previews, redirects and sitemaps. */
   path: (slug: string) => string;
+  /**
+   * The page that shows the draft in the editor. Default: `path(slug)` on the site origin.
+   * A URL on another origin needs this origin in the preview origins and a preview secret.
+   * `false` hides the preview.
+   */
+  previewUrl?: ((doc: PreviewUrlInput) => string) | false;
   /** Field used to sort the public lists, newest first. Default: the publication date. */
   sortField?: string;
   access?: AccessOverrides;

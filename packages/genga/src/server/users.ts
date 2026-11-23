@@ -23,7 +23,7 @@ export function createUsers(ctx: GengaContext, auth: GengaAuth) {
   }
 
   function inviteUrl(token: string) {
-    return `${ctx.siteUrl}/admin/setup?token=${token}`;
+    return `${ctx.siteUrl}${ctx.adminPath}/setup?token=${token}`;
   }
 
   async function invite(user: PublicUser, input: { email?: unknown; name?: unknown; role?: unknown }) {

@@ -1,3 +1,5 @@
+import { adminPath } from './admin-path';
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -23,7 +25,7 @@ export async function apiRequest<T>(
   }
   let response: Response;
   try {
-    response = await fetch(`/admin/api/${path}`, {
+    response = await fetch(`${adminPath()}/api/${path}`, {
       method: init.method ?? 'GET',
       headers,
       body,

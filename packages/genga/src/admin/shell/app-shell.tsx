@@ -17,6 +17,7 @@ import { Link, useHref, useLocation, useNavigate } from 'react-router';
 import { ROLE_LABELS } from '../../access';
 import type { AppLayoutData } from '../../types';
 import { CommandPalette } from './command-palette';
+import { adminPath, setAdminPath } from '../../client/admin-path';
 
 const AdminLayoutContext = createContext<AppLayoutData | null>(null);
 const COLLAPSED_KEY = 'genga:sidebar-collapsed';
@@ -47,21 +48,21 @@ function initials(name: string, email: string) {
 
 function navGroups(data: AppLayoutData): NavGroup[] {
   const groups: NavGroup[] = [
-    { label: null, items: [{ href: '/admin', label: 'Tableau de bord', icon: LayoutDashboard }] },
+    { label: null, items: [{ href: adminPath(), label: 'Tableau de bord', icon: LayoutDashboard }] },
     {
       label: 'Contenu',
       items: [
         ...data.collections.map((collection) => ({
-          href: `/admin/collections/${collection.name}`,
+          href: `${adminPath()}/collections/${collection.name}`,
           label: collection.label,
           icon: FileText,
         })),
-        { href: '/admin/media', label: 'Médias', icon: Image },
+        { href: adminPath('/media'), label: 'Médias', icon: Image },
       ],
     },
   ];
   if (data.canManageUsers) {
-    groups.push({ label: 'Réglages', items: [{ href: '/admin/users', label: 'Utilisateurs', icon: Users }] });
+    groups.push({ label: 'Réglages', items: [{ href: adminPath('/users'), label: 'Utilisateurs', icon: Users }] });
   }
   return groups;
 }
@@ -85,7 +86,7 @@ function storeCollapsed(collapsed: boolean) {
 function Brand({ collapsed }: { collapsed: boolean }) {
   return (
     <Link
-      to="/admin"
+      to={adminPath()}
       className="flex items-center gap-2 rounded-lg px-2 py-1"
       aria-label={collapsed ? 'Genga, tableau de bord' : undefined}
     >
@@ -178,7 +179,7 @@ function UserFooter({ data, collapsed }: { data: AppLayoutData; collapsed: boole
           <p className="truncate text-xs text-[var(--muted)]">{ROLE_LABELS[data.user.role]}</p>
         </div>
       )}
-      <form method="post" action="/admin/api/logout">
+      <form method="post" action={adminPath('/api/logout')}>
         <Tooltip delay={300}>
           <Button type="submit" isIconOnly size="sm" variant="ghost" aria-label="Se déconnecter">
             <LogOut aria-hidden className="size-4" />
@@ -195,12 +196,13 @@ function UserFooter({ data, collapsed }: { data: AppLayoutData; collapsed: boole
  * Below the `md` breakpoint, the sidebar opens as a drawer.
  */
 export function AppShell({ data, children }: AppShellProps) {
+  setAdminPath(data.adminPath);
   const navigate = useNavigate();
   const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const path = location.pathname.replace(/\/+$/, '') || '/admin';
+  const path = location.pathname.replace(/\/+$/, '') || adminPath();
   const groups = navGroups(data);
 
   useEffect(() => setCollapsed(readCollapsed()), []);
@@ -229,7 +231,7 @@ export function AppShell({ data, children }: AppShellProps) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  const isCurrent = (href: string) => (href === '/admin' ? path === '/admin' : path.startsWith(href));
+  const isCurrent = (href: string) => (href === adminPath() ? path === adminPath() : path.startsWith(href));
 
   return (
     <RouterProvider navigate={navigate} useHref={useHref}>

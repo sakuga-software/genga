@@ -9,6 +9,7 @@ import { audit } from './auth';
 import type { GengaContext } from './context';
 import { badRequest, forbidden, GengaError, isUniqueViolation, notFound } from './errors';
 import { loadMediaMap } from './media';
+import { previewTarget } from './preview';
 
 type DocumentRow = {
   id: string;
@@ -154,6 +155,7 @@ export function createDocuments(ctx: GengaContext) {
       draftRev: row.draft_rev,
       publishedSlug: row.first_published_at ? row.slug : null,
       previewPath: collection.path(row.slug),
+      preview: previewTarget(ctx, row.collection, row),
       media: Object.fromEntries(media),
       canPublish: can(user, 'publish', collection.access, { createdBy: row.created_by }),
       canDelete: can(user, 'delete', collection.access, { createdBy: row.created_by }),

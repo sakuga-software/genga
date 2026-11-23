@@ -14,7 +14,15 @@ export type GengaContext = {
   cache: PublishedCache;
   log: GengaLogger;
   siteUrl: string;
+  /** Base path of the admin, for example `/admin`. The admin API is under `<adminPath>/api`. */
+  adminPath: string;
   allowedOrigins: string[];
+  /** Origins of preview pages on another origin. They never get write access. */
+  previewOrigins: string[];
+  /** HMAC secret of the preview tokens. */
+  previewSecret: string | null;
+  /** `Cross-Origin-Resource-Policy` of `/media/*`. */
+  mediaResourcePolicy: 'same-origin' | 'same-site' | 'cross-origin';
   secureCookies: boolean;
   adminEmail: string | null;
   maxUploadBytes: number;

@@ -21,6 +21,7 @@ import type { GengaContext } from './context';
 import type { GengaDocuments } from './documents';
 import { GengaError } from './errors';
 import type { GengaMedia } from './media';
+import { isUnderPath } from '../paths';
 import { isAllowedOrigin } from './origin';
 import type { GengaUsers } from './users';
 
@@ -34,8 +35,9 @@ type Services = {
 
 const STATUSES = new Set(['all', 'draft', 'published', 'changed']);
 
-function safeNext(value: string | null): string {
-  return value && value.startsWith('/admin') && !value.startsWith('//') ? value : '/admin';
+function safeNext(value: string | null, base: string): string {
+  if (!value || value.includes('\\')) return base;
+  return isUnderPath(value.split(/[?#]/)[0], base) ? value : base;
 }
 
 /** Turns a service error into the response React Router expects from a loader. */
@@ -52,7 +54,9 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
     const user = await auth.getUser(request);
     if (user) return user;
     const url = new URL(request.url);
-    throw redirect(`/admin/login?next=${encodeURIComponent(url.pathname + url.search)}`, { headers: ADMIN_HEADERS });
+    throw redirect(`${ctx.adminPath}/login?next=${encodeURIComponent(url.pathname + url.search)}`, {
+      headers: ADMIN_HEADERS,
+    });
   }
 
   function navFor(user: SessionUser): CollectionNav[] {
@@ -78,6 +82,7 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
     async layout(request: Request): Promise<AppLayoutData> {
       const user = await requireUser(request);
       return {
+        adminPath: ctx.adminPath,
         user,
         collections: navFor(user),
         canManageUsers: can(user, 'users.manage'),
@@ -142,9 +147,9 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
 
     async loginLoader(request: Request): Promise<LoginPageData> {
       const url = new URL(request.url);
-      const next = safeNext(url.searchParams.get('next'));
+      const next = safeNext(url.searchParams.get('next'), ctx.adminPath);
       if (await auth.getUser(request)) throw redirect(next, { headers: ADMIN_HEADERS });
-      return { needsSetup: (await auth.userCount()) === 0, next };
+      return { needsSetup: (await auth.userCount()) === 0, next, adminPath: ctx.adminPath };
     },
 
     async loginAction(request: Request): Promise<FormResult> {
@@ -152,7 +157,7 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
       try {
         const form = await readForm(request, AUTH_FORM_BYTES);
         const { cookie } = await auth.login(request, form.get('email'), form.get('password'));
-        throw redirect(safeNext(String(form.get('next') ?? '')), {
+        throw redirect(safeNext(String(form.get('next') ?? ''), ctx.adminPath), {
           headers: { 'Set-Cookie': cookie, ...ADMIN_HEADERS },
         });
       } catch (error) {
@@ -164,8 +169,9 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
     async setupLoader(request: Request): Promise<SetupPageData> {
       const token = new URL(request.url).searchParams.get('token') ?? '';
       const described = token ? await auth.describeToken(token) : null;
-      if (!described) return { valid: false };
-      return { valid: true, kind: described.kind, email: described.email, name: described.name, token };
+      const { adminPath } = ctx;
+      if (!described) return { valid: false, adminPath };
+      return { valid: true, kind: described.kind, email: described.email, name: described.name, token, adminPath };
     },
 
     async setupAction(request: Request): Promise<FormResult> {
@@ -178,7 +184,7 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
           email: form.get('email'),
           password: form.get('password'),
         });
-        throw redirect('/admin', { headers: { 'Set-Cookie': cookie, ...ADMIN_HEADERS } });
+        throw redirect(ctx.adminPath, { headers: { 'Set-Cookie': cookie, ...ADMIN_HEADERS } });
       } catch (error) {
         if (error instanceof GengaError) return { error: error.message };
         throw error;

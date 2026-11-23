@@ -44,7 +44,7 @@ type Services = {
   users: GengaUsers;
 };
 
-/** Handles `/admin/api/*`. Every request needs a session; every write passes the origin check. */
+/** Handles `<adminPath>/api/*`. Every request needs a session; every write passes the origin check. */
 export function createApi({ ctx, auth, documents, media, users }: Services) {
   async function route(request: Request, user: PublicUser, segments: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
@@ -77,6 +77,10 @@ export function createApi({ ctx, auth, documents, media, users }: Services) {
         return json(await documents.publish(user, id, revision(body.draftRev)));
       }
       if (id && sub === 'unpublish' && method === 'POST') return json(await documents.unpublish(user, id));
+      if (id && sub === 'preview' && method === 'GET') {
+        const doc = await documents.get(user, id);
+        return json({ preview: doc.preview });
+      }
       if (id && sub === 'versions' && method === 'GET') return json({ versions: await documents.versions(user, id) });
       if (id && sub === 'versions' && method === 'POST') {
         const body = await readJson(request);
@@ -141,7 +145,7 @@ export function createApi({ ctx, auth, documents, media, users }: Services) {
         const cookie = await auth.logout(request);
         return new Response(null, {
           status: 303,
-          headers: { Location: '/admin/login', 'Set-Cookie': cookie, ...ADMIN_HEADERS },
+          headers: { Location: `${ctx.adminPath}/login`, 'Set-Cookie': cookie, ...ADMIN_HEADERS },
         });
       }
       const user = await auth.getUser(request);

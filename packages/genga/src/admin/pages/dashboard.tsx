@@ -9,6 +9,7 @@ import { PageHeader } from '../components/page-header';
 import { StatusChip } from '../components/status-chip';
 import { EmptyState } from '../ui/empty-state';
 import { KpiGroup } from '../ui/kpi';
+import { adminPath } from '../../client/admin-path';
 
 export function DashboardPage() {
   const data = useLoaderData() as DashboardData;
@@ -26,7 +27,7 @@ export function DashboardPage() {
 
   async function create(collection: string) {
     const created = await apiRequest<{ id: string }>('documents', { method: 'POST', json: { collection } });
-    navigate(`/admin/collections/${collection}/${created.id}`);
+    navigate(`${adminPath()}/collections/${collection}/${created.id}`);
   }
 
   return (
@@ -76,7 +77,7 @@ export function DashboardPage() {
               {data.recent.map((doc) => (
                 <li key={doc.id}>
                   <Link
-                    to={`/admin/collections/${doc.collection}/${doc.id}`}
+                    to={`${adminPath()}/collections/${doc.collection}/${doc.id}`}
                     className="flex items-center gap-4 px-4 py-3 hover:bg-[var(--surface-secondary)] first:rounded-t-xl last:rounded-b-xl"
                   >
                     <span className="min-w-0 flex-1">
@@ -105,7 +106,7 @@ export function DashboardPage() {
                 <Card key={collection.name}>
                   <Card.Header>
                     <Card.Title>
-                      <Link to={`/admin/collections/${collection.name}`} className="hover:text-[var(--accent)]">
+                      <Link to={`${adminPath()}/collections/${collection.name}`} className="hover:text-[var(--accent)]">
                         {collection.label}
                       </Link>
                     </Card.Title>

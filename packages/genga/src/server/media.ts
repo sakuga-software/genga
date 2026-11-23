@@ -259,6 +259,13 @@ export function createMedia(ctx: GengaContext) {
     await audit(ctx, user.id, 'media.delete', { detail: { mediaId: id, filename: row.filename } });
   }
 
+  /** The metadata of one media item, without an access check. Its files are public too. */
+  async function find(id: string): Promise<MediaItem | null> {
+    if (!isUuid(id)) return null;
+    const [row] = await sql<MediaRow[]>`SELECT * FROM genga_media WHERE id = ${id}`;
+    return row ? toMediaItem(row) : null;
+  }
+
   /** Serves `/media/<key>`. The key must match the pattern and a database row. */
   async function serve(key: string): Promise<Response> {
     const match = MEDIA_KEY_PATTERN.exec(key);
@@ -275,7 +282,7 @@ export function createMedia(ctx: GengaContext) {
       'Cache-Control': 'public, max-age=31536000, immutable',
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "sandbox; default-src 'none'",
-      'Cross-Origin-Resource-Policy': 'same-origin',
+      'Cross-Origin-Resource-Policy': ctx.mediaResourcePolicy,
     });
     if (row.mime === 'application/pdf') {
       headers.set('Content-Disposition', `attachment; filename="${row.filename.replace(/[^\w.-]/g, '_')}"`);
@@ -283,7 +290,7 @@ export function createMedia(ctx: GengaContext) {
     return new Response(file.body, { headers });
   }
 
-  return { list, upload, updateAlt, references, remove, serve };
+  return { list, find, upload, updateAlt, references, remove, serve };
 }
 
 export type GengaMedia = ReturnType<typeof createMedia>;

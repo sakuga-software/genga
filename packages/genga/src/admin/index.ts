@@ -8,3 +8,4 @@ export { SetupPage } from './pages/setup';
 export { UsersPage } from './pages/users';
 export { DocumentPage } from './editor/document-page';
 export { AppShell, useAdminLayout, type AppShellProps } from './shell/app-shell';
+export { adminPath, setAdminPath } from '../client/admin-path';

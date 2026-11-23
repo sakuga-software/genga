@@ -7,6 +7,7 @@ export default defineConfig({
     admin: 'src/admin/index.ts',
     render: 'src/render/index.ts',
     client: 'src/client/index.ts',
+    preview: 'src/preview/index.ts',
   },
   format: 'esm',
   platform: 'node',

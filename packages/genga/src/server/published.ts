@@ -16,7 +16,9 @@ type PublishedRow = {
   data: Record<string, unknown>;
 };
 
-export const PREVIEW_PARAM = 'genga-preview';
+import { PREVIEW_PARAM } from '../preview/bridge';
+
+export { PREVIEW_PARAM };
 
 export type RouteResult<T> =
   | { kind: 'document'; doc: PublishedDocument<T>; preview: boolean; headers: Headers }
@@ -113,6 +115,32 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
     return options.limit ? all.slice(0, options.limit) : all;
   }
 
+  /** The published version of a document, by id. */
+  async function findById<T = Record<string, unknown>>(id: string): Promise<PublishedDocument<T> | null> {
+    if (!isUuid(id)) return null;
+    const [row] = await sql<PublishedRow[]>`
+      SELECT d.id, d.collection, d.slug, d.published_at, v.id AS version_id, v.data
+      FROM genga_documents d JOIN genga_versions v ON v.id = d.published_version_id
+      WHERE d.id = ${id} AND d.deleted_at IS NULL
+    `;
+    if (!row || !ctx.config.collections[row.collection]) return null;
+    return toDocument<T>(row, row.version_id, row.data);
+  }
+
+  /**
+   * The draft of a document, with media objects. It does no access check:
+   * the caller checks one first, for example a preview token.
+   */
+  async function draft<T = Record<string, unknown>>(id: string): Promise<PublishedDocument<T> | null> {
+    if (!isUuid(id)) return null;
+    const [row] = await sql<(PublishedRow & { draft: Record<string, unknown> })[]>`
+      SELECT id, collection, slug, published_at, published_version_id AS version_id, draft
+      FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL
+    `;
+    if (!row || !ctx.config.collections[row.collection]) return null;
+    return toDocument<T>(row, null, row.draft);
+  }
+
   async function redirectFor(collection: string, slug: string): Promise<string | null> {
     const config = ctx.config.collections[collection];
     if (!config) return null;
@@ -168,7 +196,7 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
     return entries;
   }
 
-  return { find, list, redirectFor, loadForRoute, sitemap };
+  return { find, findById, draft, list, redirectFor, loadForRoute, sitemap };
 }
 
 export type GengaPublished = ReturnType<typeof createPublished>;

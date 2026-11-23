@@ -43,15 +43,14 @@ export type RenderBlocksProps = {
 
 /**
  * Renders a list of blocks with the site components. Each block renders in its own
- * error boundary. Unknown block types render nothing.
+ * error boundary. Unknown block types and blocks without a component render nothing.
  */
 export function RenderBlocks({ blocks, registry, preview = false, className }: RenderBlocksProps) {
   if (!blocks?.length) return null;
   const byType = new Map(registry.map((block) => [block.type, block]));
   const items = blocks.map((block, index) => {
-    const definition = byType.get(block._type);
-    if (!definition) return null;
-    const BlockComponent = definition.component;
+    const BlockComponent = byType.get(block._type)?.component;
+    if (!BlockComponent) return null;
     return (
       <div
         key={block._id}

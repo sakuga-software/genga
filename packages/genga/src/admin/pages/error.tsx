@@ -1,4 +1,5 @@
 import { isRouteErrorResponse, useRouteError } from 'react-router';
+import { adminPath } from '../../client/admin-path';
 
 const TITLES: Record<number, string> = { 503: 'CMS indisponible', 404: 'Introuvable', 403: 'Accès refusé' };
 
@@ -22,7 +23,7 @@ export function AdminErrorPage() {
         <p className="genga-mono text-sm text-[var(--genga-coral)]">{status}</p>
         <h1 className="genga-display text-3xl font-semibold mt-2">{title}</h1>
         <p className="mt-3 text-[var(--muted)]">{message}</p>
-        <a href="/admin" className="mt-6 inline-block text-sm text-[var(--link)] underline underline-offset-4">
+        <a href={adminPath()} className="mt-6 inline-block text-sm text-[var(--link)] underline underline-offset-4">
           Retour au tableau de bord
         </a>
       </div>

@@ -1,3 +1,5 @@
+import { adminPath } from '../../client/admin-path';
+
 export type SaveState = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
 
 /** Browsers refuse a `keepalive` request with a body over 64 KiB. */
@@ -15,7 +17,7 @@ export async function flushDraft(
 ): Promise<boolean> {
   const body = JSON.stringify({ data, draftRev });
   try {
-    const response = await fetcher(`/admin/api/documents/${documentId}/draft`, {
+    const response = await fetcher(`${adminPath()}/api/documents/${documentId}/draft`, {
       method: 'PUT',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body,

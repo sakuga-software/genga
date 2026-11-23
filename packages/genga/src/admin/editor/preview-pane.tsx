@@ -1,24 +1,33 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from '@heroui/react';
 import { ExternalLink, Monitor, RotateCw, Smartphone } from 'lucide-react';
+import { isTrustedMessage } from '../../preview/bridge';
 import type { PreviewMessage } from '../../types';
 import { SegmentedControl } from '../ui/segmented-control';
 
 type PreviewPaneProps = {
   documentId: string;
   src: string;
+  /** The origin of the frame. Default: the origin of the admin. */
+  targetOrigin?: string | null;
+  /** Gets a fresh frame URL before a reload, for example with a new preview token. */
+  refreshSrc?: () => Promise<unknown>;
   /** The populated draft. The pane posts it to the frame after each change. */
   data: Record<string, unknown> | null;
   selectedBlockId: string | null;
   onSelectBlock: (blockId: string) => void;
 };
 
-function isMessage(value: unknown): value is PreviewMessage {
-  return typeof value === 'object' && value !== null && typeof (value as { type?: unknown }).type === 'string';
-}
-
 /** The real site route in a frame. It updates at each change without a reload. */
-export function PreviewPane({ documentId, src, data, selectedBlockId, onSelectBlock }: PreviewPaneProps) {
+export function PreviewPane({
+  documentId,
+  src,
+  targetOrigin,
+  refreshSrc,
+  data,
+  selectedBlockId,
+  onSelectBlock,
+}: PreviewPaneProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [ready, setReady] = useState(false);
@@ -31,14 +40,27 @@ export function PreviewPane({ documentId, src, data, selectedBlockId, onSelectBl
     selectRef.current = onSelectBlock;
   });
 
-  function post(message: PreviewMessage) {
-    frame.current?.contentWindow?.postMessage(message, window.location.origin);
+  const post = useCallback(
+    (message: PreviewMessage) => {
+      frame.current?.contentWindow?.postMessage(message, targetOrigin ?? window.location.origin);
+    },
+    [targetOrigin],
+  );
+
+  async function reload() {
+    setReady(false);
+    await refreshSrc?.().catch(() => null);
+    setReloadKey((key) => key + 1);
   }
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin || event.source !== frame.current?.contentWindow) return;
-      if (!isMessage(event.data) || event.data.documentId !== documentId) return;
+      const expected = {
+        origin: targetOrigin ?? window.location.origin,
+        source: frame.current?.contentWindow ?? null,
+        documentId,
+      };
+      if (!isTrustedMessage(event, expected)) return;
       if (event.data.type === 'genga:ready') {
         setReady(true);
         if (latestData.current) post({ type: 'genga:draft', documentId, data: latestData.current });
@@ -50,17 +72,17 @@ export function PreviewPane({ documentId, src, data, selectedBlockId, onSelectBl
     // `genga:hello` asks a frame that is already connected to send `genga:ready` again.
     post({ type: 'genga:hello', documentId });
     return () => window.removeEventListener('message', onMessage);
-  }, [documentId]);
+  }, [documentId, targetOrigin, post]);
 
   useEffect(() => {
     if (!ready || !data) return;
     const handle = window.requestAnimationFrame(() => post({ type: 'genga:draft', documentId, data }));
     return () => window.cancelAnimationFrame(handle);
-  }, [data, ready, documentId]);
+  }, [data, ready, documentId, post]);
 
   useEffect(() => {
     if (ready) post({ type: 'genga:focus', documentId, blockId: selectedBlockId });
-  }, [selectedBlockId, ready, documentId]);
+  }, [selectedBlockId, ready, documentId, post]);
 
   return (
     <section aria-label="Aperçu" className="flex h-full min-h-0 flex-col bg-[var(--surface-secondary)]">
@@ -77,16 +99,7 @@ export function PreviewPane({ documentId, src, data, selectedBlockId, onSelectBl
         <span className="genga-mono ml-1 truncate text-xs text-[var(--muted)]">{src.split('?')[0]}</span>
         <div className="ml-auto flex gap-1">
           <Tooltip delay={300}>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="ghost"
-              aria-label="Recharger l’aperçu"
-              onPress={() => {
-                setReady(false);
-                setReloadKey((key) => key + 1);
-              }}
-            >
+            <Button isIconOnly size="sm" variant="ghost" aria-label="Recharger l’aperçu" onPress={() => void reload()}>
               <RotateCw aria-hidden className="size-4" />
             </Button>
             <Tooltip.Content>Recharger</Tooltip.Content>

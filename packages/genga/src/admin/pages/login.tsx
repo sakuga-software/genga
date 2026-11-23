@@ -1,10 +1,12 @@
 import { Alert, Button, Input, Label, TextField } from '@heroui/react';
 import { Form, useActionData, useLoaderData, useNavigation } from 'react-router';
+import { setAdminPath } from '../../client/admin-path';
 import type { FormResult, LoginPageData } from '../../types';
 import { AuthLayout } from './auth-layout';
 
 export function LoginPage() {
-  const { needsSetup, next } = useLoaderData() as LoginPageData;
+  const { needsSetup, next, adminPath } = useLoaderData() as LoginPageData;
+  setAdminPath(adminPath);
   const result = useActionData() as FormResult | undefined;
   const busy = useNavigation().state !== 'idle';
 

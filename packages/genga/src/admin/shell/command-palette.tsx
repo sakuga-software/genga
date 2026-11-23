@@ -5,6 +5,7 @@ import { Autocomplete, useFilter, type Key } from 'react-aria-components';
 import { useNavigate } from 'react-router';
 import { apiRequest } from '../../client/api';
 import type { CollectionNav, DocumentSummary } from '../../types';
+import { adminPath } from '../../client/admin-path';
 
 type CommandPaletteProps = {
   isOpen: boolean;
@@ -70,15 +71,15 @@ export function CommandPalette({ isOpen, onOpenChange, collections, canManageUse
   const labelOf = (name: string) => collections.find((collection) => collection.name === name)?.labelSingular ?? name;
 
   const pages: Command[] = [
-    { id: 'go:/admin', label: 'Tableau de bord', icon: <LayoutDashboard aria-hidden className={ICON} /> },
+    { id: `go:${adminPath()}`, label: 'Tableau de bord', icon: <LayoutDashboard aria-hidden className={ICON} /> },
     ...collections.map((collection) => ({
-      id: `go:/admin/collections/${collection.name}`,
+      id: `go:${adminPath()}/collections/${collection.name}`,
       label: collection.label,
       icon: <FileText aria-hidden className={ICON} />,
     })),
-    { id: 'go:/admin/media', label: 'Médias', icon: <Image aria-hidden className={ICON} /> },
+    { id: `go:${adminPath()}/media`, label: 'Médias', icon: <Image aria-hidden className={ICON} /> },
     ...(canManageUsers
-      ? [{ id: 'go:/admin/users', label: 'Utilisateurs', icon: <Users aria-hidden className={ICON} /> }]
+      ? [{ id: `go:${adminPath()}/users`, label: 'Utilisateurs', icon: <Users aria-hidden className={ICON} /> }]
       : []),
   ];
   const creates: Command[] = collections
@@ -89,7 +90,7 @@ export function CommandPalette({ isOpen, onOpenChange, collections, canManageUse
       icon: <FilePlus aria-hidden className={ICON} />,
     }));
   const docs: Command[] = documents.map((doc) => ({
-    id: `go:/admin/collections/${doc.collection}/${doc.id}`,
+    id: `go:${adminPath()}/collections/${doc.collection}/${doc.id}`,
     label: doc.title,
     detail: labelOf(doc.collection),
     icon: <FileText aria-hidden className={ICON} />,
@@ -97,7 +98,7 @@ export function CommandPalette({ isOpen, onOpenChange, collections, canManageUse
 
   async function createIn(collection: string) {
     const created = await apiRequest<{ id: string }>('documents', { method: 'POST', json: { collection } });
-    navigate(`/admin/collections/${collection}/${created.id}`);
+    navigate(`${adminPath()}/collections/${collection}/${created.id}`);
   }
 
   function onAction(key: Key) {

@@ -8,6 +8,7 @@ import { formatDateTime } from '../components/format';
 import { PageHeader } from '../components/page-header';
 import { STATUS_LABELS, StatusChip } from '../components/status-chip';
 import { EmptyState } from '../ui/empty-state';
+import { adminPath } from '../../client/admin-path';
 
 export function CollectionPage() {
   const { collection, documents, search, status } = useLoaderData() as CollectionPageData;
@@ -38,7 +39,7 @@ export function CollectionPage() {
         method: 'POST',
         json: { collection: collection.name },
       });
-      navigate(`/admin/collections/${collection.name}/${created.id}`);
+      navigate(`${adminPath()}/collections/${collection.name}/${created.id}`);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : 'Création impossible.');
       setCreating(false);
@@ -124,7 +125,7 @@ export function CollectionPage() {
                   <Table.Row key={doc.id} id={doc.id}>
                     <Table.Cell>
                       <Link
-                        to={`/admin/collections/${collection.name}/${doc.id}`}
+                        to={`${adminPath()}/collections/${collection.name}/${doc.id}`}
                         className="font-medium hover:text-[var(--accent)]"
                       >
                         {doc.title}

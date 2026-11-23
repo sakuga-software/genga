@@ -2,9 +2,11 @@ import { Alert, Button, Description, Input, Label, TextField } from '@heroui/rea
 import { Form, useActionData, useLoaderData, useNavigation } from 'react-router';
 import type { FormResult, SetupPageData } from '../../types';
 import { AuthLayout } from './auth-layout';
+import { adminPath, setAdminPath } from '../../client/admin-path';
 
 export function SetupPage() {
   const data = useLoaderData() as SetupPageData;
+  setAdminPath(data.adminPath);
   const result = useActionData() as FormResult | undefined;
   const busy = useNavigation().state !== 'idle';
 
@@ -14,7 +16,10 @@ export function SetupPage() {
         <p className="text-sm text-[var(--muted)]">
           Ce lien a expiré ou a déjà servi. Demandez un nouveau lien à un administrateur.
         </p>
-        <a href="/admin/login" className="mt-4 inline-block text-sm text-[var(--link)] underline underline-offset-4">
+        <a
+          href={adminPath('/login')}
+          className="mt-4 inline-block text-sm text-[var(--link)] underline underline-offset-4"
+        >
           Retour à la connexion
         </a>
       </AuthLayout>

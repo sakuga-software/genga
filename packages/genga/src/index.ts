@@ -21,6 +21,7 @@ export {
   serializeSchema,
   type BlockDefinition,
   type CollectionConfig,
+  type PreviewUrlInput,
   type GengaConfig,
   type SerializedSchema,
 } from './config';
@@ -34,5 +35,8 @@ export {
   type RichTextNode,
 } from './rich-text';
 export { collectMediaIds, populate } from './populate';
+export { richTextToHtml } from './rich-text-html';
+export { toPublicData, toPublicMedia, type PublicRichText } from './public-data';
 export { slugify } from './slugify';
+export { DEFAULT_ADMIN_PATH, isUnderPath, normalizeAdminPath } from './paths';
 export type * from './types';

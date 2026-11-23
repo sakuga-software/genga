@@ -29,6 +29,9 @@ export type DocumentSummary = {
   authorName: string | null;
 };
 
+/** Where the editor loads the preview. `origin` is null when the preview has the origin of the admin. */
+export type PreviewTarget = { url: string; origin: string | null };
+
 export type AdminDocument = DocumentSummary & {
   draft: Record<string, unknown>;
   draftRev: number;
@@ -38,6 +41,8 @@ export type AdminDocument = DocumentSummary & {
    */
   publishedSlug: string | null;
   previewPath: string;
+  /** The URL of the preview frame, or null when the collection has no preview. */
+  preview: PreviewTarget | null;
   media: Record<string, MediaObject>;
   canPublish: boolean;
   canDelete: boolean;
@@ -82,6 +87,8 @@ export type CollectionNav = {
 };
 
 export type AppLayoutData = {
+  /** Base path of the admin, for example `/admin`. */
+  adminPath: string;
   user: PublicUser;
   collections: CollectionNav[];
   canManageUsers: boolean;
@@ -111,10 +118,11 @@ export type MediaPageData = { media: MediaItem[]; canDelete: boolean; canUpload:
 
 export type UsersPageData = { users: PublicUser[]; currentUserId: string };
 
-export type LoginPageData = { needsSetup: boolean; next: string };
+export type LoginPageData = { needsSetup: boolean; next: string; adminPath: string };
 
-export type SetupPageData =
+export type SetupPageData = { adminPath: string } & (
   | { valid: true; kind: 'setup' | 'invite'; email: string | null; name: string; token: string }
-  | { valid: false };
+  | { valid: false }
+);
 
 export type FormResult = { error: string } | null;

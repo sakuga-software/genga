@@ -56,6 +56,10 @@
       "types": "./dist/client.d.mts",
       "default": "./dist/client.mjs"
     },
+    "./preview": {
+      "types": "./dist/preview.d.mts",
+      "default": "./dist/preview.mjs"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AlertDialog,
   Alert,
@@ -17,8 +17,9 @@ import { ApiError, apiRequest } from '../../client/api';
 import { blockSchemasFromSerialized } from '../../config';
 import type { MediaObject } from '../../fields/types';
 import { populate } from '../../populate';
+import { toPublicData } from '../../public-data';
 import { slugify } from '../../slugify';
-import type { AdminDocument, DocumentPageData, DocumentStatus, VersionSummary } from '../../types';
+import type { AdminDocument, DocumentPageData, DocumentStatus, PreviewTarget, VersionSummary } from '../../types';
 import { formatDateTime } from '../components/format';
 import { LiveRegion } from '../components/live-region';
 import { StatusChip } from '../components/status-chip';
@@ -28,6 +29,7 @@ import { FieldInput } from './field-input';
 import { PreviewPane } from './preview-pane';
 import { issuesToErrors, useDraft, type SaveState } from './use-draft';
 import { VersionsDrawer } from './versions-drawer';
+import { adminPath } from '../../client/admin-path';
 
 const SAVE_LABELS: Record<SaveState, string> = {
   saved: 'Enregistré',
@@ -55,6 +57,22 @@ function SaveIndicator({ state, savedAt }: { state: SaveState; savedAt: string |
       <Icon aria-hidden className={`size-3.5 ${state === 'saving' ? 'animate-spin' : ''}`} />
       {SAVE_LABELS[state]}
     </span>
+  );
+}
+
+function EditorLayout({ form, preview }: { form: ReactNode; preview: ReactNode }) {
+  if (!preview) return <div className="min-h-0 flex-1">{form}</div>;
+  return (
+    <SplitPane
+      className="flex-1"
+      storageKey="editor"
+      defaultSize={48}
+      minStart={30}
+      minEnd={25}
+      separatorLabel="Redimensionner l’aperçu"
+      start={form}
+      end={preview}
+    />
   );
 }
 
@@ -109,10 +127,26 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
     readOnly: false,
   };
 
-  const populated = useMemo(
-    () => populate(collection.fields, draft.data, blocks, media),
-    [collection.fields, draft.data, blocks, media],
-  );
+  const [preview, setPreview] = useState<PreviewTarget | null>(doc.preview);
+  const populated = useMemo(() => {
+    const data = populate<Record<string, unknown>>(collection.fields, draft.data, blocks, media);
+    // A preview on another origin gets the shape of the public API: absolute media URLs and rich text HTML.
+    if (!preview?.origin || typeof window === 'undefined') return data;
+    return toPublicData(collection.fields, data, blocks, window.location.origin);
+  }, [collection.fields, draft.data, blocks, media, preview?.origin]);
+
+  const refreshPreview = useCallback(async () => {
+    const result = await apiRequest<{ preview: PreviewTarget | null }>(`documents/${doc.id}/preview`);
+    setPreview(result.preview);
+    return result.preview?.url ?? null;
+  }, [doc.id]);
+
+  const shownPreviewPath = useRef(draft.previewPath);
+  useEffect(() => {
+    if (shownPreviewPath.current === draft.previewPath) return;
+    shownPreviewPath.current = draft.previewPath;
+    void refreshPreview().catch(() => undefined);
+  }, [draft.previewPath, refreshPreview]);
 
   const title = String(draft.data[collection.titleField] ?? '') || 'Sans titre';
   const draftSlug = String(draft.data.slug ?? '');
@@ -189,7 +223,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
       await apiRequest(`documents/${doc.id}`, { method: 'DELETE' });
       toast('Document supprimé');
       draft.discard();
-      navigate(`/admin/collections/${doc.collection}`);
+      navigate(`${adminPath()}/collections/${doc.collection}`);
     } catch (error) {
       toast.danger(error instanceof ApiError ? error.message : 'Suppression impossible.');
       setBusy(null);
@@ -247,7 +281,6 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
 
   const saveAnnouncement =
     draft.saveState === 'dirty' || draft.saveState === 'saving' ? '' : SAVE_LABELS[draft.saveState];
-  const previewSrc = `${draft.previewPath}?genga-preview=${doc.id}`;
   const slugPending = Boolean(doc.publishedSlug) && draftSlug !== '' && draftSlug !== doc.publishedSlug;
 
   return (
@@ -256,7 +289,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
       <div className="flex h-[calc(100dvh-4rem)] min-h-0 flex-col">
         <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] px-4 py-3 md:px-6">
           <Link
-            to={`/admin/collections/${doc.collection}`}
+            to={`${adminPath()}/collections/${doc.collection}`}
             className="inline-flex size-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-secondary)] hover:text-[var(--foreground)]"
             aria-label={`Retour : ${collection.label}`}
           >
@@ -311,14 +344,21 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
           )}
         </div>
 
-        <SplitPane
-          className="flex-1"
-          storageKey="editor"
-          defaultSize={48}
-          minStart={30}
-          minEnd={25}
-          separatorLabel="Redimensionner l’aperçu"
-          start={
+        <EditorLayout
+          preview={
+            preview && (
+              <PreviewPane
+                documentId={doc.id}
+                src={preview.url}
+                targetOrigin={preview.origin}
+                refreshSrc={refreshPreview}
+                data={populated}
+                selectedBlockId={selectedBlockId}
+                onSelectBlock={(id) => selectBlock(id)}
+              />
+            )
+          }
+          form={
             <form
               aria-label={`Modifier : ${title}`}
               className="h-full overflow-y-auto px-4 py-6 md:px-8"
@@ -402,15 +442,6 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
                 )}
               </div>
             </form>
-          }
-          end={
-            <PreviewPane
-              documentId={doc.id}
-              src={previewSrc}
-              data={populated as Record<string, unknown>}
-              selectedBlockId={selectedBlockId}
-              onSelectBlock={(id) => selectBlock(id)}
-            />
           }
         />
       </div>
