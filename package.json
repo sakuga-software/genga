@@ -13,7 +13,7 @@
     "test:pack": "node scripts/test-pack.mjs"
   },
   "devDependencies": {
-    "oxfmt": "^0.28.0",
+    "oxfmt": "^0.79.0",
     "oxlint": "^1.43.0",
     "typescript": "^5"
   },
