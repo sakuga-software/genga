@@ -46,8 +46,9 @@ jobs:
 
   publish:
     name: Build and push to GHCR (amd64, arm64)
-    if: github.event_name == 'push'
-    # GitHub-hosted: QEMU for arm64, and the GHCR token of the workflow.
+    # GitHub-hosted: QEMU for arm64, and the GHCR token of the workflow. Hosted minutes are
+    # free for a public repository only, so the job waits until the repository is public.
+    if: github.event_name == 'push' && !github.event.repository.private
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
