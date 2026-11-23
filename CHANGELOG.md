@@ -23,6 +23,7 @@ All notable changes to the `genga` package. The format follows
 - `richTextToHtml` and `toPublicData` in `genga`.
 - `adminPath` option and `GENGA_ADMIN_PATH`: the admin can live under another path.
 - `mediaResourcePolicy` option for the `Cross-Origin-Resource-Policy` of `/media/*`.
+- `siteLink` option (`GENGA_SITE_URL` on the server) for the link "Voir le site" of the admin.
 
 ### Changed
 
