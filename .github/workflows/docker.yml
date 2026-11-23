@@ -84,7 +84,7 @@ jobs:
             org.opencontainers.image.title=Genga
             org.opencontainers.image.description=Genga headless CMS: admin, public JSON API and live preview for any site.
             org.opencontainers.image.licenses=MIT
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: apps/server/Dockerfile
