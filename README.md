@@ -73,7 +73,7 @@ The server logs a one-time URL `/admin/setup?token=…` that creates the first a
 | Path                                               | Content                                                       |
 | -------------------------------------------------- | ------------------------------------------------------------- |
 | [`packages/genga`](./packages/genga)               | the `genga` npm package                                       |
-| [`examples/react-router`](./examples/react-router) | a minimal React Router v7 site that uses Genga                |
+| [`examples/react-router`](./examples/react-router) | a minimal React Router v8 site that uses Genga                |
 | [`apps/server`](./apps/server)                     | the headless server, published as a Docker image              |
 | [`docs`](./docs)                                   | architecture, configuration, blocks, preview bridge, security |
 

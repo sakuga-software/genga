@@ -6,7 +6,8 @@
 pnpm add genga react react-dom react-router
 ```
 
-Genga needs Node 22.12 or later, React 19, React Router 7 and Postgres 14 or later.
+Genga needs Node 22.12 or later, React 19, React Router 7 or 8 and Postgres 14 or later.
+React Router 8 itself needs Node 22.22 or later.
 The admin stylesheet is compiled: the app needs no Tailwind config for the admin.
 
 ## The config

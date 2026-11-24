@@ -5,7 +5,7 @@ approach first.
 
 ## Set up
 
-Requirements: Node 22.12 or later, pnpm (the version in `packageManager`), Docker.
+Requirements: Node 22.22 or later, pnpm (the version in `packageManager`), Docker.
 
 ```sh
 docker run -d --name genga-postgres -p 54329:5432 \

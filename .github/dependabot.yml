@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # The packages support Node 22.12 and later. Newer types let code use APIs that Node 22 does not have.
+      # Update this major together with the `engines` field.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       tiptap:
         patterns: ['@tiptap/*']

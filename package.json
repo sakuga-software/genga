@@ -13,12 +13,12 @@
     "test:pack": "node scripts/test-pack.mjs"
   },
   "devDependencies": {
-    "oxfmt": "^0.28.0",
-    "oxlint": "^1.43.0",
-    "typescript": "^5"
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
+    "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.22"
   },
   "packageManager": "pnpm@12.15.0"
 }

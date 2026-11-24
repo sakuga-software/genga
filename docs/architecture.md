@@ -1,7 +1,7 @@
 # Architecture
 
 Genga (原画, the key drawings of an animation) is a content system that lives inside a
-React Router v7 app. It gives the app an admin, access control, versions, a media library
+React Router app (v7 or v8). It gives the app an admin, access control, versions, a media library
 and a live editor of the app's own React components.
 
 ## Goals
