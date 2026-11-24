@@ -4,7 +4,9 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ApiScope } from '../src/access';
 import type { PublicUser } from '../src/types';
-import { createUser, paragraph, pngFile, request, SITE, useGenga } from './helpers';
+import { createGenga } from '../src/server';
+import { TEST_URL } from './global-setup';
+import { createUser, paragraph, pngFile, request, SITE, testConfig, useGenga } from './helpers';
 
 const MCP_URL = `${SITE}/mcp`;
 const ALL: ApiScope[] = ['read', 'write', 'publish'];
@@ -389,6 +391,34 @@ describe('MCP server', () => {
       expect(count).toBe(0);
     });
 
+    it('upload_media allows few downloads at once per token', async () => {
+      const slow = createGenga(testConfig, {
+        databaseUrl: TEST_URL,
+        siteUrl: SITE,
+        mediaDir: ctx.mediaDir,
+        logger: { info: () => {}, warn: () => {}, error: () => {} },
+        mcp: { remoteFetch: { lookup: () => new Promise(() => {}), timeoutMs: 1000 } },
+      });
+      try {
+        const editor = await createUser(ctx.genga, 'editor');
+        const { token } = await ctx.genga.tokens.create(editor, { name: 'slow', scopes: ALL });
+        const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
+          requestInit: { headers: { authorization: `Bearer ${token}` } },
+          fetch: (input, init) => slow.mcp(new Request(input, init)),
+        });
+        const client = new Client({ name: 'genga-test', version: '1.0.0' });
+        await client.connect(transport);
+        clients.push(client);
+        const results = await Promise.all(
+          Array.from({ length: 6 }, () => call(client, 'upload_media', { url: 'http://slow.example/a.png' })),
+        );
+        const refused = results.filter((result) => text(result).includes('too_many_downloads'));
+        expect(refused).toHaveLength(3);
+      } finally {
+        await slow.close();
+      }
+    });
+
     it('preview_url gives the preview and the editor URLs', async () => {
       const editor = await createUser(ctx.genga, 'editor');
       const { id } = await ctx.genga.documents.create(editor, 'journal', { title: 'Aperçu', slug: 'apercu' });
@@ -442,6 +472,29 @@ describe('MCP server', () => {
   });
 
   describe('resources and prompt', () => {
+    it('the prompt needs the read scope', async () => {
+      const client = await connect(await createUser(ctx.genga, 'editor'), ['publish']);
+      await expect(
+        client.getPrompt({ name: 'write_article', arguments: { collection: 'journal', topic: 'x' } }),
+      ).rejects.toThrow(/read/);
+    });
+
+    it('treats inherited property names as unknown collections', async () => {
+      const client = await connect(await createUser(ctx.genga, 'editor'));
+      for (const name of ['__proto__', 'constructor', 'toString']) {
+        const created = await call(client, 'create_document', { collection: name, data: { title: 'x' } });
+        expect(text(created), name).toContain('Collection inconnue');
+        const listed = await call(client, 'list_documents', { collection: name });
+        expect(text(listed), name).toContain('Collection inconnue');
+        await expect(client.readResource({ uri: `genga://collections/${name}/schema` })).rejects.toThrow(
+          /Unknown collection/,
+        );
+        await expect(
+          client.getPrompt({ name: 'write_article', arguments: { collection: name, topic: 'x' } }),
+        ).rejects.toThrow(/Unknown collection/);
+      }
+    });
+
     it('reads the schema and the document resources', async () => {
       const editor = await createUser(ctx.genga, 'editor');
       const client = await connect(editor);

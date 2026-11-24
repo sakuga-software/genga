@@ -53,9 +53,8 @@ export function createDocuments(ctx: GengaContext) {
   const { sql } = ctx;
 
   function collectionOf(name: string): CollectionConfig {
-    const collection = ctx.config.collections[name];
-    if (!collection) throw notFound(`Collection inconnue : ${name}`);
-    return collection;
+    if (!Object.hasOwn(ctx.config.collections, name)) throw notFound(`Collection inconnue : ${name}`);
+    return ctx.config.collections[name];
   }
 
   function assertCan(

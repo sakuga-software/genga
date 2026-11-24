@@ -123,6 +123,16 @@ describe('API tokens', () => {
     await expect(ctx.genga.tokens.authenticate(bearer(token, '198.51.100.21'))).resolves.not.toBeNull();
   });
 
+  it('does not lock out valid tokens when the client address is unknown', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const { token } = await ctx.genga.tokens.create(editor, { name: 'a', scopes: ['read'] });
+    const noAddress = (value: string) => request('/mcp', { headers: { authorization: `Bearer ${value}` } });
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      await ctx.genga.tokens.authenticate(noAddress(`gga_${'C'.repeat(43)}`));
+    }
+    await expect(ctx.genga.tokens.authenticate(noAddress(token))).resolves.not.toBeNull();
+  });
+
   it('serves the token routes of the admin API to a session only', async () => {
     const editor = await createUser(ctx.genga, 'editor');
     const { token } = await ctx.genga.tokens.create(editor, { name: 'a', scopes: ['read', 'write', 'publish'] });

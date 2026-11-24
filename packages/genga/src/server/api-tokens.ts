@@ -150,12 +150,14 @@ export function createApiTokens(ctx: GengaContext) {
   async function authenticate(request: Request): Promise<TokenAuth | null> {
     const token = bearerToken(request);
     if (token === null) return null;
+    // Without a known address, all clients share one key: a limit on it would lock out every client.
     const ip = clientIp(request, ctx.trustedProxies);
-    if (failures.isLimited(ip)) {
+    const limited = ip !== 'unknown';
+    if (limited && failures.isLimited(ip)) {
       throw new GengaError(429, 'rate_limited', 'Too many invalid tokens. Wait 15 minutes, then try again.');
     }
     if (!TOKEN_PATTERN.test(token)) {
-      failures.hit(ip);
+      if (limited) failures.hit(ip);
       return null;
     }
     const [row] = await sql<(TokenRow & { role: string; user_created_at: Date; disabled_at: Date | null })[]>`
@@ -166,7 +168,7 @@ export function createApiTokens(ctx: GengaContext) {
         AND (t.expires_at IS NULL OR t.expires_at > now()) AND u.disabled_at IS NULL
     `;
     if (!row) {
-      failures.hit(ip);
+      if (limited) failures.hit(ip);
       return null;
     }
     if (!row.last_used_at || Date.now() - row.last_used_at.getTime() > LAST_USED_PRECISION_MS) {

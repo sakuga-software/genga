@@ -23,6 +23,7 @@ export type RemoteFile = { body: Buffer; filename: string; contentType: string |
  * shared, documentation, multicast and reserved ranges. IPv6 forms that embed an IPv4
  * address (NAT64, 6to4, Teredo) are blocked too, because they can hide a private address.
  * BlockList checks an IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) against the IPv4 rules.
+ * `::/96` (IPv4-compatible, with `::` and `::1`) and `::ffff:0:0:0/96` (SIIT) are blocked as a whole.
  */
 const BLOCKED = new BlockList();
 for (const [network, prefix] of [
@@ -45,8 +46,8 @@ for (const [network, prefix] of [
   BLOCKED.addSubnet(network, prefix, 'ipv4');
 }
 for (const [network, prefix] of [
-  ['::', 128],
-  ['::1', 128],
+  ['::', 96],
+  ['::ffff:0:0:0', 96],
   ['64:ff9b::', 96],
   ['64:ff9b:1::', 48],
   ['100::', 64],
@@ -69,11 +70,12 @@ export function isPublicAddress(address: string): boolean {
   return !BLOCKED.check(ip, family === 4 ? 'ipv4' : 'ipv6');
 }
 
+/** One message for every host that fails, so the error tells nothing about the internal network. */
 function blocked(host: string) {
   return new GengaError(
     400,
     'url_blocked',
-    `The URL host ${host} is a private, loopback or reserved address. Give a public http(s) URL, or send the file as base64.`,
+    `The host ${host} has no public address. Give a public http(s) URL, or send the file as base64.`,
   );
 }
 
@@ -117,12 +119,12 @@ export async function fetchRemoteFile(input: string, options: RemoteFetchOptions
   ) => {
     lookupAll(hostname).then(
       (addresses) => {
-        if (!addresses.length) return callback(failed(`The host ${hostname} has no address.`), []);
+        if (!addresses.length) return callback(blocked(hostname), []);
         if (addresses.some((entry) => !allowed(entry.address))) return callback(blocked(hostname), []);
         if (lookupOptions.all) return callback(null, addresses);
         callback(null, addresses[0].address, addresses[0].family);
       },
-      () => callback(failed(`The host ${hostname} cannot be resolved.`), []),
+      () => callback(blocked(hostname), []),
     );
   };
 
@@ -169,14 +171,15 @@ function get(url: URL, lookup: http.RequestOptions['lookup'], timeoutMs: number,
     request.on('error', fail);
     request.on('response', (response) => {
       const status = response.statusCode ?? 0;
+      // A redirect or an error body can be endless: close the connection, do not read it.
       if (status >= 300 && status < 400 && response.headers.location) {
-        response.resume();
         clearTimeout(timer);
+        request.destroy();
         resolve({ kind: 'redirect', location: response.headers.location });
         return;
       }
       if (status !== 200) {
-        response.resume();
+        request.destroy();
         fail(failed(`The server answered HTTP ${status}.`));
         return;
       }

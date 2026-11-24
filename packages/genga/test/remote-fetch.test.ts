@@ -16,12 +16,21 @@ const fakeDns =
 
 let server: http.Server;
 let port: number;
+let openResponses = 0;
+
+function streamForever(res: http.ServerResponse) {
+  res.write('x');
+  const timer = setInterval(() => res.write('x'.repeat(1000)), 20);
+  res.on('close', () => clearInterval(timer));
+}
 
 /** The test server stands for a public host: only its exact address is let through. */
 const LOOPBACK_AS_PUBLIC = (address: string) => address === '127.0.0.1' || isPublicAddress(address);
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
+    openResponses += 1;
+    res.on('close', () => (openResponses -= 1));
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname === '/image.png') {
       res.writeHead(200, { 'content-type': 'image/png' });
@@ -32,6 +41,12 @@ beforeAll(async () => {
     } else if (url.pathname === '/loop') {
       res.writeHead(302, { location: '/loop' });
       res.end();
+    } else if (url.pathname === '/endless-redirect') {
+      res.writeHead(302, { location: '/endless-error' });
+      streamForever(res);
+    } else if (url.pathname === '/endless-error') {
+      res.writeHead(500);
+      streamForever(res);
     } else if (url.pathname === '/big') {
       res.writeHead(200, { 'content-type': 'image/png' });
       res.write(Buffer.alloc(600));
@@ -66,6 +81,8 @@ describe('isPublicAddress', () => {
     '::',
     '::ffff:127.0.0.1',
     '::ffff:7f00:1',
+    '::7f00:1',
+    '::ffff:0:7f00:1',
     'fc00::1',
     'fd12:3456::1',
     'fe80::1',
@@ -105,6 +122,33 @@ describe('fetchRemoteFile', () => {
     await expect(fetchRemoteFile('https://mixed.example/a.png', { maxBytes: 1000, lookup })).rejects.toMatchObject({
       code: 'url_blocked',
     });
+  });
+
+  it('gives one error for a private, an unknown or an empty host', async () => {
+    const lookup: LookupAll = async (hostname) => {
+      if (hostname === 'empty.example') return [];
+      if (hostname === 'internal.example') return [{ address: '10.0.0.5', family: 4 }];
+      throw new Error('ENOTFOUND');
+    };
+    const messages = new Set<string>();
+    for (const host of ['internal.example', 'missing.example', 'empty.example']) {
+      const error = await fetchRemoteFile(`http://${host}/a.png`, { maxBytes: 1000, lookup }).catch((caught) => caught);
+      messages.add(`${error.code} ${error.message.replace(host, '<host>')}`);
+    }
+    expect([...messages]).toHaveLength(1);
+  });
+
+  it('closes the connection of a redirect or an error, even if the body never ends', async () => {
+    await expect(
+      fetchRemoteFile(`http://files.example:${port}/endless-redirect`, {
+        maxBytes: 1000,
+        timeoutMs: 2000,
+        lookup: fakeDns({ 'files.example': ['127.0.0.1'] }),
+        isAllowedAddress: LOOPBACK_AS_PUBLIC,
+      }),
+    ).rejects.toMatchObject({ code: 'fetch_failed' });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(openResponses).toBe(0);
   });
 
   it('refuses other schemes and credentials', async () => {

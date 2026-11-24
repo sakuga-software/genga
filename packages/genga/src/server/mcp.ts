@@ -33,6 +33,9 @@ type Services = {
   tokens: GengaApiTokens;
 };
 
+/** Remote downloads of `upload_media` that one token can run at the same time. */
+const MAX_DOWNLOADS_PER_TOKEN = 3;
+
 const SERVER_INFO = { name: 'genga', version: '1.0.0' };
 
 const INSTRUCTIONS = `Genga is a CMS. Each collection has fields, and a "blocks" field holds a list of blocks.
@@ -127,6 +130,27 @@ function decodeBase64(value: string, maxBytes: number): Buffer {
 export function createMcp({ ctx, documents, media, tokens }: Services, options: McpOptions = {}) {
   const maxBodyBytes = Math.max(JSON_BYTES, Math.ceil(ctx.maxUploadBytes / 3) * 4 + UPLOAD_OVERHEAD_BYTES);
 
+  const downloads = new Map<string, number>();
+
+  async function download(tokenId: string, url: string) {
+    const running = downloads.get(tokenId) ?? 0;
+    if (running >= MAX_DOWNLOADS_PER_TOKEN) {
+      throw new GengaError(
+        429,
+        'too_many_downloads',
+        `This token already downloads ${MAX_DOWNLOADS_PER_TOKEN} files. Wait for them, then try again.`,
+      );
+    }
+    downloads.set(tokenId, running + 1);
+    try {
+      return await fetchRemoteFile(url, { ...options.remoteFetch, maxBytes: ctx.maxUploadBytes });
+    } finally {
+      const left = (downloads.get(tokenId) ?? 1) - 1;
+      if (left > 0) downloads.set(tokenId, left);
+      else downloads.delete(tokenId);
+    }
+  }
+
   function absolute(path: string) {
     return new URL(path, `${ctx.siteUrl}/`).href;
   }
@@ -166,6 +190,14 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
         if (!(error instanceof GengaError)) ctx.log.error('[genga] MCP tool error:', error);
         return { isError: true, content: [{ type: 'text', text: describeError(error, user) }] };
       }
+    }
+
+    function readableCollection(name: string) {
+      const collection = Object.hasOwn(ctx.config.collections, name) ? ctx.config.collections[name] : undefined;
+      if (!collection || !can(user, 'read', collection.access)) {
+        throw new McpError(ErrorCode.InvalidParams, `Unknown collection: ${name}. Call list_collections.`);
+      }
+      return collection;
     }
 
     function readableCollections() {
@@ -483,10 +515,7 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
           if (args.data) {
             body = decodeBase64(args.data, ctx.maxUploadBytes);
           } else {
-            const remote = await fetchRemoteFile(args.url as string, {
-              ...options.remoteFetch,
-              maxBytes: ctx.maxUploadBytes,
-            });
+            const remote = await download(token.id, args.url as string);
             body = remote.body;
             filename ??= remote.filename;
           }
@@ -561,10 +590,7 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
       async (uri, variables) => {
         const name = String(variables.name);
         if (!has('read')) throw new McpError(ErrorCode.InvalidRequest, 'This token has no "read" scope.');
-        const collection = ctx.config.collections[name];
-        if (!collection || !can(user, 'read', collection.access)) {
-          throw new McpError(ErrorCode.InvalidParams, `Unknown collection: ${name}.`);
-        }
+        readableCollection(name);
         const body = { ...collectionSchema(name), valueFormats: VALUE_FORMATS };
         return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(body, null, 2) }] };
       },
@@ -603,10 +629,8 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
         },
       },
       ({ collection: name, topic, audience }) => {
-        const collection = ctx.config.collections[name];
-        if (!collection || !can(user, 'read', collection.access)) {
-          throw new McpError(ErrorCode.InvalidParams, `Unknown collection: ${name}. Call list_collections.`);
-        }
+        if (!has('read')) throw new McpError(ErrorCode.InvalidRequest, 'This token has no "read" scope.');
+        const collection = readableCollection(name);
         const schema = collectionSchema(name);
         const fieldLines = Object.entries(schema.fields).map(
           ([field, definition]) =>

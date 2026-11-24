@@ -219,6 +219,9 @@ publish only when a human asks.
   scanners find a leaked token.
 - **Rate limit.** 20 bad tokens from one client address in 15 minutes give a `429` for that
   address. The address comes from `X-Forwarded-For` and `trustedProxies`, as for the login.
+  If the address is unknown (no `X-Forwarded-For` behind a proxy that you declared), the
+  limit does not apply, because all clients would share one counter. Set `trustedProxies`
+  to the real number of proxies.
 - **Origin.** A request without an `Origin` header (a CLI, a desktop app, a server) passes. A
   browser request must come from an allowed origin: by default the site origin and
   `allowedOrigins`. `Origin: null` is refused. This protects a local server from DNS
@@ -234,7 +237,10 @@ publish only when a human asks.
   public (private, loopback, link-local, shared, multicast and reserved ranges are refused,
   for IPv4, IPv6 and IPv6 forms that embed an IPv4 address); the socket connects to the
   address that passed the check, so DNS rebinding cannot change it; each redirect is checked
-  again, up to 3; the download stops at the upload size limit and after 15 seconds. The file
+  again, up to 3; the connection of a redirect or an error closes at once; the download
+  stops at the upload size limit and after 15 seconds; one token runs 3 downloads at most at
+  the same time. A host without a public address gives one error, whatever the reason, so the
+  error tells nothing about the internal network. The file
   then goes through the same checks as an upload in the admin: the real type comes from the
   bytes, and only JPEG, PNG, WebP, AVIF, GIF and PDF pass.
 - **Limits.** The body of a request is limited to the upload size limit in base64, plus
