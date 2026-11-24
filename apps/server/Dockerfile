@@ -5,7 +5,9 @@
 ARG NODE_IMAGE=node:22-alpine3.24
 ARG ALPINE_IMAGE=alpine:3.24
 
-FROM ${NODE_IMAGE} AS build
+# The build runs on the platform of the builder. Native tools such as the TypeScript and
+# bundler binaries crash under QEMU (exit code 132), and their output is plain JavaScript.
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
 # The SBOM scan also reads this stage: the final image bundles most packages into one file.
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 ARG PNPM_VERSION=12.15.0
@@ -18,8 +20,19 @@ COPY examples/react-router/package.json examples/react-router/
 RUN pnpm install --frozen-lockfile --filter "genga-server..."
 COPY packages/genga packages/genga
 COPY apps/server apps/server
-RUN pnpm --filter genga build \
-  && pnpm --filter genga-server build \
+RUN pnpm --filter genga build && pnpm --filter genga-server build
+
+# The production dependencies install on the target platform: sharp has a native binary per platform.
+FROM ${NODE_IMAGE} AS deploy
+ARG BUILDKIT_SBOM_SCAN_STAGE=true
+ARG PNPM_VERSION=12.15.0
+RUN npm install --global "pnpm@${PNPM_VERSION}"
+WORKDIR /repo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY examples/react-router/package.json examples/react-router/
+COPY --from=build /repo/packages/genga packages/genga
+COPY --from=build /repo/apps/server apps/server
+RUN rm -rf packages/genga/node_modules apps/server/node_modules \
   && pnpm --filter genga-server deploy --prod /out \
   && mkdir -p /out/node_modules/genga \
   && cp -r packages/genga/package.json packages/genga/bin packages/genga/migrations /out/node_modules/genga/ \
@@ -33,7 +46,7 @@ LABEL org.opencontainers.image.title="Genga" \
   org.opencontainers.image.licenses="MIT" \
   org.opencontainers.image.version="${VERSION}"
 # The runtime needs the node binary only: no npm, corepack or yarn.
-COPY --from=build /usr/local/bin/node /usr/local/bin/node
+COPY --from=deploy /usr/local/bin/node /usr/local/bin/node
 RUN apk add --no-cache libstdc++ tini \
   && node --version \
   && addgroup -S -g 10001 genga \
@@ -41,9 +54,9 @@ RUN apk add --no-cache libstdc++ tini \
   && mkdir -p /data/media /config \
   && chown -R genga:genga /data
 WORKDIR /app
-COPY --from=build --chown=root:root /out/package.json /out/server.mjs ./
-COPY --from=build --chown=root:root /out/node_modules ./node_modules
-COPY --from=build --chown=root:root /out/build ./build
+COPY --from=deploy --chown=root:root /out/package.json /out/server.mjs ./
+COPY --from=deploy --chown=root:root /out/node_modules ./node_modules
+COPY --from=deploy --chown=root:root /out/build ./build
 ENV NODE_ENV=production \
   PORT=3000 \
   GENGA_MEDIA_DIR=/data/media
