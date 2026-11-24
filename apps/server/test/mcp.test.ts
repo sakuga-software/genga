@@ -78,6 +78,7 @@ beforeAll(async () => {
   genga = createGenga(config, {
     databaseUrl: TEST_URL,
     siteUrl: baseUrl,
+    siteLink: 'https://www.example.com',
     mediaDir,
     secureCookies: false,
     logger: { info: () => {}, warn: () => {}, error: console.error },
@@ -129,6 +130,7 @@ describe('MCP endpoint of the headless server', () => {
         arguments: { id, draftRev },
       })) as CallToolResult;
       expect(published.isError).toBeFalsy();
+      expect(published.structuredContent?.url).toBe('https://www.example.com/blog/hello-from-mcp');
 
       const response = await fetch(`${baseUrl}/api/v1/collections/posts/documents/hello-from-mcp`);
       expect(response.status).toBe(200);

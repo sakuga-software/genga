@@ -64,7 +64,9 @@ const VALUE_FORMATS: Record<Field['type'], string> = {
 const DOCUMENT_STATUSES = ['draft', 'published', 'changed', 'all'] as const;
 const uuid = z.string().describe('Document id (uuid)');
 const draftRev = z.number().int().min(1).describe('The draftRev that you read last. A stale value gives a conflict.');
-const data = z.record(z.string(), z.unknown());
+const data = z
+  .looseObject({})
+  .describe('Field values by field name. See list_collections for the fields and their format.');
 
 type ToolOutput = { data: Record<string, unknown>; text: string };
 
@@ -127,6 +129,12 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
 
   function absolute(path: string) {
     return new URL(path, `${ctx.siteUrl}/`).href;
+  }
+
+  /** The public page of a document. A headless server shows its documents on another site (`siteLink`). */
+  function pageUrl(path: string) {
+    const site = ctx.siteLink && /^https?:\/\//.test(ctx.siteLink) ? ctx.siteLink.replace(/\/+$/, '') : ctx.siteUrl;
+    return new URL(path, `${site}/`).href;
   }
 
   function editorUrl(collection: string, id: string) {
@@ -376,8 +384,8 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
         run('publish', async () => {
           const result = await documents.publish(user, args.id, args.draftRev);
           return {
-            data: { ...result, id: args.id, url: absolute(result.previewPath) },
-            text: `Published at ${absolute(result.previewPath)}.`,
+            data: { ...result, id: args.id, url: pageUrl(result.previewPath) },
+            text: `Published at ${pageUrl(result.previewPath)}.`,
           };
         }),
     );

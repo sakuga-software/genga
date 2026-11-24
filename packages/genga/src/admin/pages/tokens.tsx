@@ -175,7 +175,9 @@ export function TokensPage() {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The dialog keeps the token after it closes, so its title stays during the exit animation.
   const [confirm, setConfirm] = useState<ApiTokenItem | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
   async function create(form: HTMLFormElement) {
@@ -207,13 +209,18 @@ export function TokensPage() {
     try {
       await apiRequest(`tokens/${token.id}`, { method: 'DELETE' });
       toast.success(`Le jeton « ${token.name} » est révoqué.`);
-      setConfirm(null);
+      setConfirmOpen(false);
       revalidator.revalidate();
     } catch (caught) {
       toast.danger(caught instanceof ApiError ? caught.message : 'Révocation impossible.');
     } finally {
       setRevoking(false);
     }
+  }
+
+  function askRevoke(token: ApiTokenItem) {
+    setConfirm(token);
+    setConfirmOpen(true);
   }
 
   const others = allTokens?.filter((token) => token.user.id !== currentUserId) ?? null;
@@ -239,7 +246,7 @@ export function TokensPage() {
             void create(event.currentTarget);
           }}
         >
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-start gap-3">
             <TextField name="name" isRequired maxLength={100} className="min-w-64 flex-1">
               <Label>Nom</Label>
               <Input placeholder="Claude Code, portable" />
@@ -301,7 +308,7 @@ export function TokensPage() {
         <h2 id="my-tokens-heading" className="genga-display mb-4 text-lg font-semibold">
           Mes jetons
         </h2>
-        <TokensTable label="Mes jetons" tokens={tokens} showOwner={false} onRevoke={setConfirm} />
+        <TokensTable label="Mes jetons" tokens={tokens} showOwner={false} onRevoke={askRevoke} />
       </section>
 
       {others && (
@@ -312,11 +319,11 @@ export function TokensPage() {
           <p className="mb-4 text-sm text-[var(--muted)]">
             En tant qu’administrateur, vous pouvez révoquer le jeton de toute personne.
           </p>
-          <TokensTable label="Jetons des autres personnes" tokens={others} showOwner onRevoke={setConfirm} />
+          <TokensTable label="Jetons des autres personnes" tokens={others} showOwner onRevoke={askRevoke} />
         </section>
       )}
 
-      <AlertDialog.Backdrop isOpen={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
+      <AlertDialog.Backdrop isOpen={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialog.Container>
           <AlertDialog.Dialog>
             <AlertDialog.Header>
