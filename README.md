@@ -170,7 +170,7 @@ export const gengaConfig = defineConfig({
       label: 'Pages',
       labelSingular: 'Page',
       titleField: 'title',
-      path: (slug) => `/${slug}`,
+      path: (value) => `/${value}`,
       fields: pageFields,
     },
   },
@@ -192,7 +192,8 @@ export const genga = createGenga(gengaConfig, {
 ```
 
 **3. Mount the admin, its API and the media route.** Each admin route module is a few
-lines: a loader that calls `genga.admin.*` and a page component from `genga/admin`.
+lines: a loader that calls `genga.admin.*` and a page component from `genga/admin`. The shell route links
+`genga/admin.css`, and `root.tsx` sets `data-genga-admin` on `<html>` for the admin paths.
 
 <details>
 <summary>The route config and one admin route module</summary>
@@ -301,7 +302,7 @@ sequenceDiagram
     participant F as Preview frame (your route)
     participant S as Server (loadForRoute)
     E->>F: Load /studio?genga-preview=id
-    F->>S: GET with session cookie or signed token
+    F->>S: GET with the session cookie
     S-->>F: SSR of the draft, Cache-Control no-store
     F->>E: genga:ready
     loop At each keystroke, at most once per animation frame
@@ -369,6 +370,9 @@ only, no authentication, CORS from an allow list, a rate limit per client addres
 curl http://localhost:3000/api/v1/collections/posts/documents/paper
 ```
 
+<details>
+<summary>The answer</summary>
+
 ```jsonc
 {
   "document": {
@@ -395,6 +399,8 @@ curl http://localhost:3000/api/v1/collections/posts/documents/paper
   },
 }
 ```
+
+</details>
 
 Responses carry an `ETag`: send it back in `If-None-Match` to get a `304`. Rich text comes
 with its `html`, and media URLs are absolute. Read [public API](./docs/api.md) and the
@@ -466,15 +472,6 @@ These items are **planned**, not available yet:
 Issues and pull requests are welcome. Open an issue before a large change, so that we can
 agree on the approach first. [CONTRIBUTING.md](./CONTRIBUTING.md) explains the setup and the
 checks: lint, format, typecheck, and more than 95 tests that run on a real Postgres.
-
-Run the example locally:
-
-```sh
-docker run -d --name genga-postgres -p 54329:5432 \
-  -e POSTGRES_USER=genga -e POSTGRES_PASSWORD=genga -e POSTGRES_DB=genga postgres:18
-pnpm install && pnpm build
-DATABASE_URL=postgres://genga:genga@localhost:54329/genga pnpm dev
-```
 
 ## License
 
