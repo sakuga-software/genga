@@ -111,16 +111,18 @@ describe('API tokens', () => {
     expect(entry).toMatchObject({ user_id: admin.id, detail: { tokenId: item.id, ownerId: first.id } });
   });
 
-  it('answers 429 after 20 bad tokens from one address, and still accepts other addresses', async () => {
+  it('answers 429 to bad tokens after 20 from one address, and still accepts a valid token', async () => {
     const editor = await createUser(ctx.genga, 'editor');
     const { token } = await ctx.genga.tokens.create(editor, { name: 'a', scopes: ['read'] });
+    const bad = bearer(`gga_${'B'.repeat(43)}`, '198.51.100.20');
     for (let attempt = 0; attempt < 20; attempt += 1) {
-      await ctx.genga.tokens.authenticate(bearer(`gga_${'B'.repeat(43)}`, '198.51.100.20'));
+      await expect(ctx.genga.tokens.authenticate(bad)).resolves.toBeNull();
     }
-    await expect(ctx.genga.tokens.authenticate(bearer(token, '198.51.100.20'))).rejects.toMatchObject({
+    await expect(ctx.genga.tokens.authenticate(bad)).rejects.toMatchObject({ status: 429 });
+    await expect(ctx.genga.tokens.authenticate(bearer('nope', '198.51.100.20'))).rejects.toMatchObject({
       status: 429,
     });
-    await expect(ctx.genga.tokens.authenticate(bearer(token, '198.51.100.21'))).resolves.not.toBeNull();
+    await expect(ctx.genga.tokens.authenticate(bearer(token, '198.51.100.20'))).resolves.not.toBeNull();
   });
 
   it('does not lock out valid tokens when the client address is unknown', async () => {

@@ -150,16 +150,18 @@ export function createApiTokens(ctx: GengaContext) {
   async function authenticate(request: Request): Promise<TokenAuth | null> {
     const token = bearerToken(request);
     if (token === null) return null;
-    // Without a known address, all clients share one key: a limit on it would lock out every client.
+    // A valid token always passes: the limit applies to bad tokens only, so that bad tokens
+    // from a shared address (a NAT, a proxy, an unknown address) cannot lock out other clients.
     const ip = clientIp(request, ctx.trustedProxies);
-    const limited = ip !== 'unknown';
-    if (limited && failures.isLimited(ip)) {
-      throw new GengaError(429, 'rate_limited', 'Too many invalid tokens. Wait 15 minutes, then try again.');
-    }
-    if (!TOKEN_PATTERN.test(token)) {
-      if (limited) failures.hit(ip);
+    const refuse = () => {
+      const limited = ip !== 'unknown' && failures.isLimited(ip);
+      if (ip !== 'unknown') failures.hit(ip);
+      if (limited) {
+        throw new GengaError(429, 'rate_limited', 'Too many invalid tokens. Wait 15 minutes, then try again.');
+      }
       return null;
-    }
+    };
+    if (!TOKEN_PATTERN.test(token)) return refuse();
     const [row] = await sql<(TokenRow & { role: string; user_created_at: Date; disabled_at: Date | null })[]>`
       SELECT t.id, t.name, t.scopes, t.last_used_at, t.user_id,
         u.email, u.name AS user_name, u.role, u.created_at AS user_created_at, u.disabled_at
@@ -167,10 +169,7 @@ export function createApiTokens(ctx: GengaContext) {
       WHERE t.token_hash = ${hashToken(token)} AND t.revoked_at IS NULL
         AND (t.expires_at IS NULL OR t.expires_at > now()) AND u.disabled_at IS NULL
     `;
-    if (!row) {
-      if (limited) failures.hit(ip);
-      return null;
-    }
+    if (!row) return refuse();
     if (!row.last_used_at || Date.now() - row.last_used_at.getTime() > LAST_USED_PRECISION_MS) {
       await sql`UPDATE genga_api_tokens SET last_used_at = now() WHERE id = ${row.id}`;
     }

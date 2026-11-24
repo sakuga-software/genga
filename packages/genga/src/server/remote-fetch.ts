@@ -163,9 +163,19 @@ function get(url: URL, lookup: http.RequestOptions['lookup'], timeoutMs: number,
       lookup,
       headers: { 'user-agent': 'Genga-MCP (media upload)', accept: 'image/*, application/pdf;q=0.9' },
     });
+    let settled = false;
     const timer = setTimeout(() => request.destroy(failed('The download took too long.')), timeoutMs);
-    const fail = (error: unknown) => {
+    const finish = (result: GetResult) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      resolve(result);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      request.destroy();
       reject(error instanceof GengaError ? error : failed(`The download failed: ${(error as Error).message}.`));
     };
     request.on('error', fail);
@@ -173,28 +183,25 @@ function get(url: URL, lookup: http.RequestOptions['lookup'], timeoutMs: number,
       const status = response.statusCode ?? 0;
       // A redirect or an error body can be endless: close the connection, do not read it.
       if (status >= 300 && status < 400 && response.headers.location) {
-        clearTimeout(timer);
+        finish({ kind: 'redirect', location: response.headers.location });
         request.destroy();
-        resolve({ kind: 'redirect', location: response.headers.location });
         return;
       }
       if (status !== 200) {
-        request.destroy();
         fail(failed(`The server answered HTTP ${status}.`));
         return;
       }
       const declared = Number(response.headers['content-length']);
       if (Number.isFinite(declared) && declared > maxBytes) {
-        request.destroy();
         fail(tooLarge(maxBytes));
         return;
       }
       const chunks: Buffer[] = [];
       let total = 0;
       response.on('data', (chunk: Buffer) => {
+        if (settled) return;
         total += chunk.length;
         if (total > maxBytes) {
-          request.destroy();
           fail(tooLarge(maxBytes));
           return;
         }
@@ -202,10 +209,7 @@ function get(url: URL, lookup: http.RequestOptions['lookup'], timeoutMs: number,
       });
       response.on('error', fail);
       response.on('end', () => {
-        clearTimeout(timer);
-        if (total <= maxBytes) {
-          resolve({ kind: 'body', body: Buffer.concat(chunks), contentType: response.headers['content-type'] ?? null });
-        }
+        finish({ kind: 'body', body: Buffer.concat(chunks), contentType: response.headers['content-type'] ?? null });
       });
     });
     request.end();

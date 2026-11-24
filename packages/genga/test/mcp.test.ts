@@ -172,6 +172,31 @@ describe('MCP server', () => {
       expect(result.structuredContent?.valueFormats.richText).toContain('"type":"doc"');
     });
 
+    it.each([
+      ['list_collections', 'read', {}],
+      ['list_documents', 'read', { collection: 'journal' }],
+      ['get_document', 'read', { id: '00000000-0000-4000-8000-000000000000' }],
+      ['list_versions', 'read', { id: '00000000-0000-4000-8000-000000000000' }],
+      ['list_media', 'read', {}],
+      ['preview_url', 'read', { id: '00000000-0000-4000-8000-000000000000' }],
+      ['create_document', 'write', { collection: 'journal', data: { title: 'x' } }],
+      ['update_draft', 'write', { id: '00000000-0000-4000-8000-000000000000', draftRev: 1, data: {} }],
+      ['restore_version', 'write', { id: '00000000-0000-4000-8000-000000000000', versionId: 'x', draftRev: 1 }],
+      ['upload_media', 'write', { data: 'aGVsbG8=' }],
+      ['update_media_alt', 'write', { id: '00000000-0000-4000-8000-000000000000', alt: 'x' }],
+      ['publish_document', 'publish', { id: '00000000-0000-4000-8000-000000000000', draftRev: 1 }],
+      ['unpublish_document', 'publish', { id: '00000000-0000-4000-8000-000000000000' }],
+    ] as const)('%s needs the %s scope', async (tool, scope, args) => {
+      const editor = await createUser(ctx.genga, 'editor');
+      const client = await connect(
+        editor,
+        ALL.filter((candidate) => candidate !== scope),
+      );
+      const result = await call(client, tool, args);
+      expect(result.isError).toBe(true);
+      expect(text(result)).toContain(`no "${scope}" scope`);
+    });
+
     it('a token without the read scope cannot read', async () => {
       const editor = await createUser(ctx.genga, 'editor');
       const result = await call(await connect(editor, ['write']), 'list_collections');

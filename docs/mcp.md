@@ -212,16 +212,16 @@ publish only when a human asks.
   token that is unknown, revoked, expired or of a disabled user, the answer is `401` with a
   `WWW-Authenticate: Bearer` header. The endpoint never reads the session cookie.
 - **Rights.** Scopes ∩ role, checked on each request with the current role (see
-  [Create a token](#create-a-token)). Tokens cannot create or revoke tokens: only an admin
-  session can, through the admin API.
+  [Create a token](#create-a-token)). Tokens cannot create or revoke tokens: only a signed-in session of
+  the admin can, through the admin API.
 - **Token storage.** The database keeps the SHA-256 of each token, never the token. The token
   has 256 random bits, so a hash without salt is enough. The `gga_` prefix lets secret
   scanners find a leaked token.
-- **Rate limit.** 20 bad tokens from one client address in 15 minutes give a `429` for that
-  address. The address comes from `X-Forwarded-For` and `trustedProxies`, as for the login.
-  If the address is unknown (no `X-Forwarded-For` behind a proxy that you declared), the
-  limit does not apply, because all clients would share one counter. Set `trustedProxies`
-  to the real number of proxies.
+- **Rate limit.** After 20 bad tokens from one client address in 15 minutes, the next bad
+  tokens from that address get a `429`. A valid token always passes, so bad tokens from a
+  shared address cannot lock out the other clients. The address comes from `X-Forwarded-For`
+  and `trustedProxies`, as for the login. An unknown address has no limit, because all such
+  clients would share one counter: set `trustedProxies` to the real number of proxies.
 - **Origin.** A request without an `Origin` header (a CLI, a desktop app, a server) passes. A
   browser request must come from an allowed origin: by default the site origin and
   `allowedOrigins`. `Origin: null` is refused. This protects a local server from DNS
