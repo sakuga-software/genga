@@ -12,12 +12,12 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/genga"><img src="https://img.shields.io/npm/v/genga?color=ff6b50" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/genga"><img src="https://img.shields.io/npm/dm/genga" alt="npm downloads"></a>
+  <a href="https://www.npmjs.com/package/genga"><img src="https://img.shields.io/npm/v/genga?color=ff6b50&cacheSeconds=3600" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/genga"><img src="https://img.shields.io/npm/dm/genga?cacheSeconds=3600" alt="npm downloads"></a>
   <a href="https://github.com/sakuga-software/genga/actions/workflows/ci.yml"><img src="https://github.com/sakuga-software/genga/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
   <a href="https://github.com/sakuga-software/genga/pkgs/container/genga"><img src="https://img.shields.io/badge/docker-ghcr.io%2Fsakuga--software%2Fgenga-2496ed?logo=docker&logoColor=white" alt="Docker image on GHCR"></a>
-  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/genga" alt="Node version"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/genga?cacheSeconds=3600" alt="Node version"></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript"></a>
 </p>
 
