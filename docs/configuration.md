@@ -160,6 +160,7 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `mediaResourcePolicy` | `same-origin`                     | `Cross-Origin-Resource-Policy` of `/media/*`. Use `cross-origin` when other origins show the media. |
 | `maxConnections`      | 10                                | Size of the Postgres pool.                                                                          |
 | `logger`              | `console`                         | `{ info, warn, error }`.                                                                            |
+| `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the [MCP endpoint](./mcp.md). A request without `Origin` passes.      |
 
 ## Environment variables (example app)
 
@@ -189,10 +190,15 @@ route('/admin', 'routes/admin/shell.tsx', [
     route('collections/:collection/:id', 'routes/admin/document.tsx'),
     route('media', 'routes/admin/media.tsx'),
     route('users', 'routes/admin/users.tsx'),
+    route('tokens', 'routes/admin/tokens.tsx'),
   ]),
 ]),
 route('/media/*', 'routes/media.ts'),
+route('/mcp', 'routes/mcp.ts'), // optional: the MCP endpoint, see docs/mcp.md
 ```
+
+The `tokens` page (`TokensPage`, loader `genga.admin.tokens(request)`) lets each user create
+and revoke the personal access tokens of the [MCP endpoint](./mcp.md).
 
 To mount the admin elsewhere, set `adminPath` (or `GENGA_ADMIN_PATH`), for example `/cms`,
 and use the same path in `routes.ts`: `route('/cms/api/*', …)` and `route('/cms', …)`. The

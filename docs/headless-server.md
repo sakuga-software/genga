@@ -93,6 +93,8 @@ The images are for `linux/amd64` and `linux/arm64`, with provenance and SBOM att
 | `GENGA_RATE_LIMIT`      | `300`                                    | Requests per minute and per client address on the public API.                                                                          |
 | `GENGA_ADMIN_EMAIL`     | none                                     | The email of the first admin, filled in the setup form.                                                                                |
 | `GENGA_SITE_URL`        | none                                     | The public site, for the link "Voir le site" of the admin. Without it, the admin hides the link.                                       |
+| `GENGA_MCP`             | `on`                                     | `off` turns the [MCP endpoint](./mcp.md) off.                                                                                          |
+| `GENGA_MCP_PATH`        | `/mcp`                                   | The path of the MCP endpoint, one segment.                                                                                             |
 | `PORT`                  | `3000`                                   | The port in the container.                                                                                                             |
 
 The three origin lists are separate on purpose. A CORS origin can only read published

@@ -8,6 +8,18 @@ All notable changes to the `genga` package. The format follows
 
 ### Added
 
+- MCP server: `genga.mcp(request)`, a fetch-style handler for the Model Context Protocol over
+  Streamable HTTP (stateless). 13 tools (collections, documents, drafts with `draftRev`,
+  publish, versions, media with an SSRF-safe URL upload, preview URLs), the resources
+  `genga://collections/{name}/schema` and `genga://documents/{id}`, and the prompt
+  `write_article`. Writes go through the admin services and the audit log, with
+  `via: "mcp"` and the token id. See `docs/mcp.md`.
+- Personal access tokens (`gga_…`, stored as SHA-256) with the scopes `read`, `write` and
+  `publish`, an expiry, and a « Jetons d’accès » page in the admin for every role. The rights
+  of a token are its scopes and the role of its user, both. Disabling a user revokes its
+  tokens. Migration `0003_api_tokens`. The page needs a new admin route, `tokens`
+  (`TokensPage`, `genga.admin.tokens`).
+- Headless server: `/mcp`, with `GENGA_MCP` (`on` or `off`) and `GENGA_MCP_PATH`.
 - Headless server: the Docker image `ghcr.io/sakuga-software/genga` (`apps/server`) runs the
   admin, a public read API under `/api/v1` and the media, with a JSON or `.mjs` config file.
 - Public API v1: collections and their schemas, documents by list, slug and id, media
