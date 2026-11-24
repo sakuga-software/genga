@@ -43,6 +43,10 @@
       "types": "./dist/server.d.mts",
       "default": "./dist/server.mjs"
     },
+    "./remote": {
+      "types": "./dist/remote.d.mts",
+      "default": "./dist/remote.mjs"
+    },
     "./admin": {
       "types": "./dist/admin.d.mts",
       "default": "./dist/admin.mjs"

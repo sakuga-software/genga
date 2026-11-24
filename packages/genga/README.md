@@ -11,6 +11,7 @@ npm install genga react react-dom react-router
 | ----------------- | --------------------------------------------------------------------- |
 | `genga`           | field builders, `defineConfig`, `defineBlock`, access, schemas        |
 | `genga/server`    | `createGenga()`: database, auth, documents, media, API, admin loaders |
+| `genga/remote`    | `createRemoteSource()`: reads a Genga server with `fetch`, edge-safe  |
 | `genga/admin`     | admin route components                                                |
 | `genga/admin.css` | compiled admin stylesheet (no Tailwind setup needed)                  |
 | `genga/render`    | `RenderBlocks`, `RichText`, `usePreviewData`                          |

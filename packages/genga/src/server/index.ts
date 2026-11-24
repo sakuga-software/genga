@@ -23,6 +23,7 @@ import { checkPathCollisions, createHandler } from './handle';
 import { createPublicApi, createPublicReads, PUBLIC_API_PATH, type PublicApiOptions } from './public-api';
 import { checkPreviewConfig, previewTarget } from './preview';
 import { createPublished } from './published';
+import { createEmbeddedSource } from './source';
 import type { StorageAdapter } from './storage/adapter';
 import { localStorageAdapter } from './storage/local';
 import { createUsers } from './users';
@@ -181,6 +182,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   const tokens = createApiTokens(ctx);
   const services = { ctx, auth, documents, media, users, tokens };
   const reads = createPublicReads({ ctx, published });
+  const source = createEmbeddedSource({ ctx, auth, published, reads });
   const api = createApi(services);
   const mcp = createMcp(services, mcpOptions ?? {});
 
@@ -218,6 +220,14 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   });
 
   return {
+    /** The content source of embedded mode: published content in the public shape. */
+    mode: source.mode,
+    getDocument: source.getDocument,
+    listDocuments: source.listDocuments,
+    resolveRoute: source.resolveRoute,
+    getDraft: source.getDraft,
+    sitemap: source.sitemap,
+    tagsFor: source.tagsFor,
     config,
     sql,
     /** Base path of the admin, for example `/admin`. */
@@ -272,13 +282,18 @@ export type { GengaHandler, HandleContext } from './handle';
 export type { GengaEventListener, GengaEvents, WebhookConfig, WebhookDeliveryOptions } from './events';
 export { tagsFor, type GengaEvent, type GengaEventType } from '../events';
 export { signWebhook, verifyWebhook, WebhookVerificationError } from '../webhooks';
+export { PUBLIC_API_PATH, type PublicApiOptions } from './public-api';
 export {
-  PUBLIC_API_PATH,
+  GengaSourceError,
+  type CacheInfo,
   type DocumentPage,
+  type GengaRouteResult,
+  type GengaSource,
   type ListQuery,
-  type PublicApiOptions,
+  type PreviewInput,
   type PublicDocument,
-} from './public-api';
+  type SitemapEntry,
+} from '../source';
 export { clientIp, hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from './auth';
 export { localStorageAdapter } from './storage/local';
 export type { StorageAdapter } from './storage/adapter';

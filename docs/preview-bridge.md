@@ -71,6 +71,21 @@ The token is an HMAC of the document id and an expiry, signed with the secret. I
 10 minutes and for this document only. The editor puts a new token in the URL at each load,
 and the reload button of the preview pane gets a new one.
 
+The secret stays on the Genga server. Never give it to the site: a site that held it could
+sign a token for any draft. The site checks a token with `GET /api/v1/preview/:id`, or with
+`resolveRoute` of the [remote source](./content-source.md), which calls that endpoint.
+
+**Token hygiene.**
+
+- Preview responses send `Cache-Control: private, no-store`, `Vary: Cookie`,
+  `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex`. `resolveRoute` gives these
+  headers: forward them. The `Referrer-Policy` keeps the token out of the `Referer` of the
+  requests of the page.
+- `connectPreview` removes `genga-token` from the address bar with `history.replaceState` and
+  keeps it in memory. `connection.token()` and `previewToken(id)` give the current token.
+- The editor sends a fresh token with `genga:token` 2 minutes before the current one expires,
+  as long as the frame is open.
+
 ### 2. Allow the frame on the site
 
 The admin must be able to frame the preview page. If the site sends
@@ -150,6 +165,12 @@ and `event.source`, and ignores messages for another document id. Neither side e
 | `genga:draft`  | editor | The populated draft, at most once per animation frame.      |
 | `genga:focus`  | editor | Highlights and scrolls to the selected block.               |
 | `genga:select` | frame  | A click on a block selects it in the form.                  |
+| `genga:saved`  | editor | The autosave stored the draft (`draftRev`).                 |
+| `genga:token`  | editor | A fresh preview token, before the current one expires.      |
+
+Pages whose blocks render only on the server (React Server Components, `.astro`) use
+`genga:saved`: `connectPreview({ onSaved })` or `usePreviewData(doc, preview, { onSaved })`
+calls back after each autosave, and the page refreshes with the token in memory.
 
 `usePreviewData` reads the drafts from an external store (`useSyncExternalStore`), so React
 renders again with the new data. `meta` and `<title>` do not update live.

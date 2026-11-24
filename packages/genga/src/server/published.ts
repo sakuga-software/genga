@@ -17,6 +17,7 @@ type PublishedRow = {
 };
 
 import { PREVIEW_PARAM } from '../preview/bridge';
+import { SOURCE_PREVIEW_HEADERS } from '../source';
 
 export { PREVIEW_PARAM };
 
@@ -25,7 +26,8 @@ export type RouteResult<T> =
   | { kind: 'redirect'; location: string; headers: Headers }
   | { kind: 'not-found'; headers: Headers };
 
-export const PREVIEW_HEADERS = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' } as const;
+/** Preview answers: never shared, never indexed, and no preview token in a `Referer`. */
+export const PREVIEW_HEADERS = SOURCE_PREVIEW_HEADERS;
 
 function previewHeaders() {
   return new Headers(PREVIEW_HEADERS);

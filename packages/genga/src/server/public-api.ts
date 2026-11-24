@@ -9,6 +9,9 @@ import type { GengaMedia } from './media';
 import { verifyPreviewToken } from './preview';
 import type { GengaPublished } from './published';
 import { TokenBuckets } from './token-bucket';
+import { GengaSourceError, type DocumentPage, type ListQuery, type PublicDocument } from '../source';
+
+export type { DocumentPage, ListQuery, PublicDocument };
 import { isUuid } from '../uuid';
 
 export const PUBLIC_API_PATH = '/api/v1';
@@ -27,16 +30,7 @@ const MAX_EVENTS = 500;
 const DEFAULT_LIMIT = 20;
 const SORTABLE = new Set(['text', 'textarea', 'slug', 'date', 'number', 'select', 'boolean']);
 
-export class PublicApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-    readonly extra: Record<string, unknown> = {},
-  ) {
-    super(message);
-  }
-}
+export class PublicApiError extends GengaSourceError {}
 
 const notFound = (message = 'Not found.') => new PublicApiError(404, 'not_found', message);
 const badRequest = (message: string) => new PublicApiError(400, 'bad_request', message);
@@ -77,31 +71,6 @@ function compareValues(left: unknown, right: unknown): number {
   if (typeof left === 'number' && typeof right === 'number') return left - right;
   return String(left).localeCompare(String(right));
 }
-
-/** The query of a document list: the same in the public API and in the content source. */
-export type ListQuery = {
-  limit?: number;
-  cursor?: string | null;
-  tag?: string | null;
-  /** `publishedAt` or a simple field of the collection, with an optional `-` for descending order. */
-  sort?: string | null;
-};
-
-export type PublicDocument<T = Record<string, unknown>> = {
-  id: string;
-  collection: string;
-  slug: string;
-  path: string;
-  versionId: string | null;
-  publishedAt: string | null;
-  data: T;
-};
-
-export type DocumentPage<T = Record<string, unknown>> = {
-  documents: PublicDocument<T>[];
-  total: number;
-  nextCursor: string | null;
-};
 
 type Services = { ctx: GengaContext; published: GengaPublished; media: GengaMedia };
 
@@ -311,6 +280,7 @@ export function createPublicApi(
         media: { ...toPublicMedia(item, ctx.siteUrl), size: item.size, createdAt: item.createdAt },
       });
     }
+    if (resource === 'sitemap' && !name) return json({ entries: await published.sitemap() });
     if (resource === 'events' && !name) {
       const after = url.searchParams.get('after');
       if (after !== null && !isUuid(after)) throw badRequest('after must be the id of an event.');

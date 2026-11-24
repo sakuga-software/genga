@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Tooltip } from '@heroui/react';
 import { ExternalLink, Monitor, RotateCw, Smartphone } from 'lucide-react';
-import { isTrustedMessage } from '../../preview/bridge';
+import { isTrustedMessage, PREVIEW_TOKEN_PARAM } from '../../preview/bridge';
 import type { PreviewMessage } from '../../types';
 import { SegmentedControl } from '../ui/segmented-control';
 
@@ -12,11 +12,26 @@ type PreviewPaneProps = {
   targetOrigin?: string | null;
   /** Gets a fresh frame URL before a reload, for example with a new preview token. */
   refreshSrc?: () => Promise<unknown>;
+  /** Gets a fresh preview token. The pane sends it to a frame on another origin before the token expires. */
+  renewToken?: () => Promise<string | null>;
+  /** The time of the last autosave. The pane then sends `genga:saved` with `draftRev`. */
+  savedAt?: string | null;
+  draftRev?: { readonly current: number };
   /** The populated draft. The pane posts it to the frame after each change. */
   data: Record<string, unknown> | null;
   selectedBlockId: string | null;
   onSelectBlock: (blockId: string) => void;
 };
+
+/** Preview tokens last 10 minutes. The pane sends a fresh one 2 minutes before. */
+const TOKEN_RENEW_MS = 8 * 60_000;
+
+function withToken(src: string, token: string): string {
+  const url = new URL(src, window.location.href);
+  if (!url.searchParams.has(PREVIEW_TOKEN_PARAM)) return src;
+  url.searchParams.set(PREVIEW_TOKEN_PARAM, token);
+  return url.href;
+}
 
 /** The real site route in a frame. It updates at each change without a reload. */
 export function PreviewPane({
@@ -24,6 +39,9 @@ export function PreviewPane({
   src,
   targetOrigin,
   refreshSrc,
+  renewToken,
+  savedAt = null,
+  draftRev,
   data,
   selectedBlockId,
   onSelectBlock,
@@ -32,7 +50,9 @@ export function PreviewPane({
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [ready, setReady] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [freshToken, setFreshToken] = useState<string | null>(null);
   const latestData = useRef(data);
+  const lastSavedAt = useRef(savedAt);
   const selectRef = useRef(onSelectBlock);
 
   useEffect(() => {
@@ -47,8 +67,31 @@ export function PreviewPane({
     [targetOrigin],
   );
 
+  useEffect(() => {
+    if (!ready || !targetOrigin || !renewToken) return;
+    const timer = window.setInterval(() => {
+      void renewToken()
+        .catch(() => null)
+        .then((token) => {
+          if (!token) return;
+          setFreshToken(token);
+          post({ type: 'genga:token', documentId, token });
+        });
+    }, TOKEN_RENEW_MS);
+    return () => window.clearInterval(timer);
+  }, [ready, targetOrigin, renewToken, documentId, post]);
+
+  useEffect(() => {
+    if (savedAt === lastSavedAt.current) return;
+    lastSavedAt.current = savedAt;
+    if (ready && savedAt && draftRev) post({ type: 'genga:saved', documentId, draftRev: draftRev.current });
+  }, [savedAt, draftRev, ready, documentId, post]);
+
+  const tabHref = freshToken ? withToken(src, freshToken) : src;
+
   async function reload() {
     setReady(false);
+    setFreshToken(null);
     await refreshSrc?.().catch(() => null);
     setReloadKey((key) => key + 1);
   }
@@ -105,7 +148,7 @@ export function PreviewPane({
             <Tooltip.Content>Recharger</Tooltip.Content>
           </Tooltip>
           <a
-            href={src}
+            href={tabHref}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex size-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-tertiary)] hover:text-[var(--foreground)]"

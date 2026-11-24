@@ -179,6 +179,29 @@ paths:
         '304': { $ref: '#/components/responses/NotModified' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
+  /sitemap:
+    get:
+      operationId: getSitemap
+      summary: The path and the last publish time of every published document
+      responses:
+        '200':
+          description: The entries of the sitemap.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [path, lastModified]
+                      properties:
+                        path: { type: string }
+                        lastModified: { type: [string, 'null'], format: date-time }
+        '304': { $ref: '#/components/responses/NotModified' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /events:
     get:
       operationId: listEvents
