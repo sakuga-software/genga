@@ -12,8 +12,10 @@ import type {
   LoginPageData,
   MediaPageData,
   SetupPageData,
+  TokensPageData,
   UsersPageData,
 } from '../types';
+import type { GengaApiTokens } from './api-tokens';
 import { ADMIN_HEADERS } from './api';
 import type { GengaAuth, SessionUser } from './auth';
 import { AUTH_FORM_BYTES, readForm } from './body';
@@ -31,6 +33,7 @@ type Services = {
   documents: GengaDocuments;
   media: GengaMedia;
   users: GengaUsers;
+  tokens: GengaApiTokens;
 };
 
 const STATUSES = new Set(['all', 'draft', 'published', 'changed']);
@@ -49,7 +52,7 @@ function rethrow(error: unknown): never {
 }
 
 /** Loaders and actions of the admin routes. The app calls them from its route modules. */
-export function createAdmin({ ctx, auth, documents, media, users }: Services) {
+export function createAdmin({ ctx, auth, documents, media, users, tokens }: Services) {
   async function requireUser(request: Request): Promise<SessionUser> {
     const user = await auth.getUser(request);
     if (user) return user;
@@ -144,6 +147,17 @@ export function createAdmin({ ctx, auth, documents, media, users }: Services) {
       } catch (error) {
         rethrow(error);
       }
+    },
+
+    async tokens(request: Request): Promise<TokensPageData> {
+      const user = await requireUser(request);
+      const isManager = can(user, 'users.manage');
+      return {
+        tokens: await tokens.list(user),
+        allTokens: isManager ? await tokens.list(user, { all: true }) : null,
+        currentUserId: user.id,
+        canPublish: Object.values(ctx.config.collections).some((collection) => can(user, 'publish', collection.access)),
+      };
     },
 
     async loginLoader(request: Request): Promise<LoginPageData> {

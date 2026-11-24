@@ -64,8 +64,9 @@ export function useGenga(): Context {
   });
   beforeEach(async () => {
     context.genga.auth.resetRateLimits();
+    context.genga.tokens.resetRateLimits();
     await context.genga.sql`
-      TRUNCATE genga_audit, genga_redirects, genga_versions, genga_documents, genga_media, genga_tokens, genga_sessions, genga_users CASCADE
+      TRUNCATE genga_audit, genga_api_tokens, genga_redirects, genga_versions, genga_documents, genga_media, genga_tokens, genga_sessions, genga_users CASCADE
     `;
   });
   afterAll(async () => {

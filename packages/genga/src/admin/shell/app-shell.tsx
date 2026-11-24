@@ -4,6 +4,7 @@ import {
   ExternalLink,
   FileText,
   Image,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu as MenuIcon,
@@ -61,9 +62,10 @@ function navGroups(data: AppLayoutData): NavGroup[] {
       ],
     },
   ];
-  if (data.canManageUsers) {
-    groups.push({ label: 'Réglages', items: [{ href: adminPath('/users'), label: 'Utilisateurs', icon: Users }] });
-  }
+  const settings: NavItem[] = [];
+  if (data.canManageUsers) settings.push({ href: adminPath('/users'), label: 'Utilisateurs', icon: Users });
+  settings.push({ href: adminPath('/tokens'), label: 'Jetons d’accès', icon: KeyRound });
+  groups.push({ label: 'Réglages', items: settings });
   return groups;
 }
 

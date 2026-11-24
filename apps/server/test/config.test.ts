@@ -142,7 +142,21 @@ describe('settings', () => {
       rateLimit: 300,
       secret: null,
       siteUrl: null,
+      mcp: { enabled: true, path: '/mcp' },
     });
+  });
+
+  it('reads the MCP switch and path', () => {
+    expect(readSettings({ ...env, GENGA_MCP: 'off' }).mcp).toEqual({ enabled: false, path: '/mcp' });
+    expect(readSettings({ ...env, GENGA_MCP_PATH: '/agents/' }).mcp).toEqual({ enabled: true, path: '/agents' });
+    for (const [values, problem] of [
+      [{ GENGA_MCP: 'maybe' }, 'GENGA_MCP must be on or off'],
+      [{ GENGA_MCP_PATH: '/a/b' }, 'GENGA_MCP_PATH must be one path segment'],
+      [{ GENGA_MCP_PATH: '/api' }, 'GENGA_MCP_PATH cannot be /api'],
+      [{ GENGA_MCP_PATH: '/admin' }, 'GENGA_MCP_PATH cannot be the admin path'],
+    ] as const) {
+      expect(() => readSettings({ ...env, ...values })).toThrow(problem);
+    }
   });
 
   it('reads lists, wildcards and paths', () => {

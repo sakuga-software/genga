@@ -1,4 +1,4 @@
-import type { Role } from './access';
+import type { ApiScope, Role } from './access';
 import type { MediaObject } from './fields/types';
 
 /**
@@ -128,3 +128,24 @@ export type SetupPageData = { adminPath: string } & (
 );
 
 export type FormResult = { error: string } | null;
+
+/** An API token as the admin lists it. The clear token shows only once, at creation. */
+export type ApiTokenItem = {
+  id: string;
+  name: string;
+  scopes: ApiScope[];
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  expired: boolean;
+  user: { id: string; email: string; name: string };
+};
+
+export type TokensPageData = {
+  tokens: ApiTokenItem[];
+  /** The tokens of every user, for a user manager. Null for the other roles. */
+  allTokens: ApiTokenItem[] | null;
+  currentUserId: string;
+  /** True when the role of the user can publish in at least one collection. */
+  canPublish: boolean;
+};

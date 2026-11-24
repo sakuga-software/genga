@@ -7,6 +7,10 @@ export const ROLE_LABELS: Record<Role, string> = {
   author: 'Auteur',
 };
 
+/** The scopes of an API token. The rights of a token are its scopes and the role of its user, both. */
+export const API_SCOPES = ['read', 'write', 'publish'] as const;
+export type ApiScope = (typeof API_SCOPES)[number];
+
 export type DocumentAction = 'read' | 'create' | 'update' | 'publish' | 'delete';
 export type GlobalAction = 'media.upload' | 'media.delete' | 'users.manage';
 export type Action = DocumentAction | GlobalAction;

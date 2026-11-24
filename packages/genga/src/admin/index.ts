@@ -5,6 +5,7 @@ export { DashboardPage } from './pages/dashboard';
 export { LoginPage } from './pages/login';
 export { MediaPage } from './pages/media';
 export { SetupPage } from './pages/setup';
+export { TokensPage } from './pages/tokens';
 export { UsersPage } from './pages/users';
 export { DocumentPage } from './editor/document-page';
 export { AppShell, useAdminLayout, type AppShellProps } from './shell/app-shell';

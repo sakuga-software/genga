@@ -1,6 +1,7 @@
 import { tolerantRead } from '../fields/schema';
 import { populate } from '../populate';
 import type { PublicUser } from '../types';
+import type { GengaApiTokens } from './api-tokens';
 import type { GengaAuth } from './auth';
 import { readForm, readJson, UPLOAD_OVERHEAD_BYTES } from './body';
 import type { GengaContext } from './context';
@@ -42,10 +43,11 @@ type Services = {
   documents: GengaDocuments;
   media: GengaMedia;
   users: GengaUsers;
+  tokens: GengaApiTokens;
 };
 
 /** Handles `<adminPath>/api/*`. Every request needs a session; every write passes the origin check. */
-export function createApi({ ctx, auth, documents, media, users }: Services) {
+export function createApi({ ctx, auth, documents, media, users, tokens }: Services) {
   async function route(request: Request, user: PublicUser, segments: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
     const [resource, id, sub] = segments;
@@ -130,6 +132,19 @@ export function createApi({ ctx, auth, documents, media, users }: Services) {
       if (id && !sub && method === 'PATCH')
         return json({ user: await users.update(user, id, await readJson(request)) });
       if (id && sub === 'reset' && method === 'POST') return json(await users.resetLink(user, id));
+    }
+
+    // Only a session reaches this API: a bearer token cannot create or revoke tokens.
+    if (resource === 'tokens') {
+      if (!id && method === 'GET') {
+        const all = new URL(request.url).searchParams.get('all') === '1';
+        return json({ tokens: await tokens.list(user, { all }) });
+      }
+      if (!id && method === 'POST') return json(await tokens.create(user, await readJson(request)), 201);
+      if (id && method === 'DELETE') {
+        await tokens.revoke(user, id);
+        return json({ ok: true });
+      }
     }
 
     throw notFound('Route API inconnue.');

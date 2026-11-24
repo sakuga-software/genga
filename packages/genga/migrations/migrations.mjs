@@ -121,4 +121,22 @@ FROM (
 WHERE v.document_id = d.id;
 `,
   },
+  {
+    // Personal access tokens for the MCP server. The database keeps the sha256 of the token only.
+    id: '0003_api_tokens',
+    sql: `
+CREATE TABLE genga_api_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES genga_users (id) ON DELETE CASCADE,
+  name text NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+  token_hash text NOT NULL UNIQUE,
+  scopes text[] NOT NULL CHECK (cardinality(scopes) > 0 AND scopes <@ ARRAY['read', 'write', 'publish']::text[]),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  expires_at timestamptz,
+  revoked_at timestamptz
+);
+CREATE INDEX genga_api_tokens_user_idx ON genga_api_tokens (user_id, created_at DESC);
+`,
+  },
 ];
