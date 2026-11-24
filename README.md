@@ -127,8 +127,7 @@ or 8, Postgres 14 or later.
 npm i genga
 ```
 
-> The version 0.1.0 on npm accepts React Router 7. React Router 8 support is on `main` and
-> comes with the next release.
+> Genga accepts React Router 7.18 and React Router 8.5 or later.
 
 **1. Define a block and a collection.** A block is a component and its fields.
 
@@ -408,7 +407,7 @@ with its `html`, and media URLs are absolute. Read [public API](./docs/api.md) a
 
 ## MCP for AI agents
 
-**From the next release.** Genga ships an [MCP](https://modelcontextprotocol.io) server: an AI
+Genga ships an [MCP](https://modelcontextprotocol.io) server: an AI
 agent reads and writes content through tools, with a personal API token. The token has the
 role of its user, so an agent can do what that user can do, and no more. Read
 [MCP](./docs/mcp.md).

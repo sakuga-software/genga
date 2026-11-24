@@ -6,6 +6,8 @@ All notable changes to the `genga` package. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-24
+
 ### Added
 
 - MCP server: `genga.mcp(request)`, a fetch-style handler for the Model Context Protocol over
