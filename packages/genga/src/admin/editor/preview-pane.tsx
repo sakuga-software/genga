@@ -50,7 +50,7 @@ export function PreviewPane({
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [ready, setReady] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [freshToken, setFreshToken] = useState<string | null>(null);
+  const [freshToken, setFreshToken] = useState<{ src: string; token: string } | null>(null);
   const latestData = useRef(data);
   const lastSavedAt = useRef(savedAt);
   const selectRef = useRef(onSelectBlock);
@@ -74,12 +74,12 @@ export function PreviewPane({
         .catch(() => null)
         .then((token) => {
           if (!token) return;
-          setFreshToken(token);
+          setFreshToken({ src, token });
           post({ type: 'genga:token', documentId, token });
         });
     }, TOKEN_RENEW_MS);
     return () => window.clearInterval(timer);
-  }, [ready, targetOrigin, renewToken, documentId, post]);
+  }, [ready, targetOrigin, renewToken, documentId, post, src]);
 
   useEffect(() => {
     if (savedAt === lastSavedAt.current) return;
@@ -87,7 +87,7 @@ export function PreviewPane({
     if (ready && savedAt && draftRev) post({ type: 'genga:saved', documentId, draftRev: draftRev.current });
   }, [savedAt, draftRev, ready, documentId, post]);
 
-  const tabHref = freshToken ? withToken(src, freshToken) : src;
+  const tabHref = freshToken?.src === src ? withToken(src, freshToken.token) : src;
 
   async function reload() {
     setReady(false);
