@@ -156,6 +156,23 @@ describe('peer address', () => {
     expect((await from('203.0.113.2'))?.status).toBe(200);
   });
 
+  it('gives the peer to the bad-token limit of MCP', async () => {
+    const genga = start({ mcp: {}, trustedProxies: 0 });
+    const call = (peerAddress: string) =>
+      genga.handle(
+        at('/mcp', {
+          method: 'POST',
+          headers: { authorization: 'Bearer gga_bad', 'content-type': 'application/json' },
+          body: '{}',
+        }),
+        { peerAddress },
+      );
+    let status = 0;
+    for (let attempt = 0; attempt < 50 && status !== 429; attempt += 1) status = (await call('192.0.2.7'))?.status ?? 0;
+    expect(status).toBe(429);
+    expect((await call('192.0.2.8'))?.status).toBe(401);
+  });
+
   it('keeps the body of a write', async () => {
     const genga = start();
     const user = await createUser(genga, 'admin');
