@@ -237,6 +237,23 @@ curl "https://cms.example.com/api/v1/preview/3caa7401-…?token=mi3k2x9.Xq…"
   new one.
 - Without `GENGA_SECRET`, this endpoint answers `404`.
 
+### `GET /api/v1/events`
+
+The [publish events](./events.md) of the last 7 days, oldest first, for a site that missed a
+webhook. Never cached (`no-store`). Query: `after` (the id of the last event that the site
+handled) and `limit` (1 to 500, default 500).
+
+```json
+{
+  "events": [{ "id": "0b8a…", "type": "document.published", "tags": ["genga:c:posts", "…"], "…": "…" }],
+  "hasMore": false
+}
+```
+
+While `hasMore` is true, call again with the id of the last event. An `after` that is
+unknown or older than 7 days answers `410` with `cursor_expired`: invalidate every Genga cache
+(the tag `genga`), then read again without `after`.
+
 ## Health
 
 These endpoints are outside `/api/v1` and have no rate limit.

@@ -473,6 +473,7 @@ These items are **planned**, not available yet:
 - [Preview bridge](./docs/preview-bridge.md)
 - [Headless server](./docs/headless-server.md)
 - [Public API](./docs/api.md) and its [OpenAPI file](./docs/openapi.yaml)
+- [Publish events and webhooks](./docs/events.md)
 - [Security model](./docs/security.md)
 - [Changelog](./CHANGELOG.md)
 

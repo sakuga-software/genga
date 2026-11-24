@@ -32,7 +32,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   const genga = start();
   await genga.ready();
-  await genga.sql`TRUNCATE genga_media, genga_documents, genga_sessions, genga_users CASCADE`;
+  await genga.sql`TRUNCATE genga_events, genga_media, genga_documents, genga_sessions, genga_users CASCADE`;
 });
 
 afterEach(async () => {

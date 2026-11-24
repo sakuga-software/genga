@@ -7,6 +7,13 @@ import { createAuth } from './auth';
 import { PublishedCache } from './cache';
 import type { GengaContext, GengaLogger } from './context';
 import { createDocuments } from './documents';
+import {
+  checkWebhooks,
+  createEventBus,
+  type GengaEvents,
+  type WebhookConfig,
+  type WebhookDeliveryOptions,
+} from './events';
 import { createMcp, type McpOptions } from './mcp';
 import { createMedia } from './media';
 import { runMigrations } from '../../migrations/migrate.mjs';
@@ -70,6 +77,13 @@ export type GengaOptions = {
   trustedProxies?: number;
   logger?: GengaLogger;
   /**
+   * Receivers of the publish events, as signed webhooks (Standard Webhooks). Genga keeps each
+   * event in an outbox table and retries for 24 hours. Default: `GENGA_WEBHOOKS`, a JSON array.
+   */
+  webhooks?: WebhookConfig[];
+  /** Options of the webhook sender. */
+  webhookDelivery?: WebhookDeliveryOptions;
+  /**
    * The MCP endpoint. Off in `genga.handle` by default: an object turns it on at `path`
    * (default `/mcp`). The deprecated `genga.mcp` handler reads the same options.
    */
@@ -95,6 +109,21 @@ function publicApiOptionsOf(value: GengaOptions['publicApi']): PublicApiOptions 
   return value === true ? {} : value;
 }
 
+/** Reads `GENGA_WEBHOOKS`. The error never repeats the value: it holds secrets. */
+export function webhooksFromEnv(value = process.env.GENGA_WEBHOOKS): WebhookConfig[] {
+  if (!value?.trim()) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error('Genga: GENGA_WEBHOOKS must be a JSON array of { "url", "secret", "events" } objects.');
+  }
+  if (!Array.isArray(parsed) || parsed.some((item) => !item || typeof item !== 'object')) {
+    throw new Error('Genga: GENGA_WEBHOOKS must be a JSON array of { "url", "secret", "events" } objects.');
+  }
+  return parsed as WebhookConfig[];
+}
+
 function trustedProxiesFromEnv(): number {
   const value = Number(process.env.GENGA_TRUSTED_PROXIES ?? 1);
   return Number.isInteger(value) && value >= 0 ? value : 1;
@@ -106,6 +135,11 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     onnotice: () => {},
     transform: { undefined: null },
   });
+  const log = options.logger ?? console;
+  const previewSecret =
+    (options.previewSecret === undefined ? process.env.GENGA_SECRET : options.previewSecret) || null;
+  const webhooks = checkWebhooks(options.webhooks ?? webhooksFromEnv(), previewSecret);
+  const events = createEventBus(sql, log, webhooks, options.webhookDelivery);
   const siteOrigin = originOf(options.siteUrl);
   const allowedOrigins = [...new Set([...(options.allowedOrigins ?? []), ...(siteOrigin ? [siteOrigin] : [])])];
   const ctx: GengaContext = {
@@ -114,7 +148,8 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     blocks: blockSchemas(config),
     storage: options.storage ?? localStorageAdapter(options.mediaDir ?? './data/media'),
     cache: new PublishedCache(),
-    log: options.logger ?? console,
+    events,
+    log,
     siteUrl: options.siteUrl.replace(/\/+$/, ''),
     adminPath: normalizeAdminPath(options.adminPath ?? process.env.GENGA_ADMIN_PATH),
     mediaPath: normalizeBasePath(options.mediaPath, DEFAULT_MEDIA_PATH, 'media path'),
@@ -125,7 +160,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     maxUploadBytes: config.media?.maxUploadBytes ?? 20_000_000,
     trustedProxies: options.trustedProxies ?? trustedProxiesFromEnv(),
     previewOrigins: options.previewOrigins ?? parseOrigins(process.env.GENGA_PREVIEW_ORIGINS, 'GENGA_PREVIEW_ORIGINS'),
-    previewSecret: (options.previewSecret === undefined ? process.env.GENGA_SECRET : options.previewSecret) || null,
+    previewSecret,
     mediaResourcePolicy: options.mediaResourcePolicy ?? 'same-origin',
   };
   checkPreviewConfig(ctx);
@@ -154,6 +189,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     ready ??= (async () => {
       await runMigrations(sql);
       await auth.ensureSetupToken();
+      events.start();
     })().catch((error) => {
       ready = null;
       throw error;
@@ -201,6 +237,10 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
      * It waits for `ready()` and answers 503 when the database is not reachable.
      */
     handle,
+    /** The publish events, in process. Webhooks carry the same events to other processes. */
+    events: { on: events.on } satisfies GengaEvents,
+    /** Sends the due webhook deliveries now, and waits for them. */
+    deliverWebhooks: () => events.drain(),
     /** @deprecated Use `genga.handle(request)`, which serves `<adminPath>/api/*`. Leaves at 1.0. */
     api: deprecated('genga.api', 'genga.handle(request)', api),
     /**
@@ -217,6 +257,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
       if (!ctx.allowedOrigins.includes(origin)) ctx.allowedOrigins.push(origin);
     },
     async close() {
+      await events.stop();
       await sql.end({ timeout: 5 });
     },
   };
@@ -228,6 +269,9 @@ export { runMigrations } from '../../migrations/migrate.mjs';
 export { GengaError } from './errors';
 export { isAllowedOrigin } from './origin';
 export type { GengaHandler, HandleContext } from './handle';
+export type { GengaEventListener, GengaEvents, WebhookConfig, WebhookDeliveryOptions } from './events';
+export { tagsFor, type GengaEvent, type GengaEventType } from '../events';
+export { signWebhook, verifyWebhook, WebhookVerificationError } from '../webhooks';
 export {
   PUBLIC_API_PATH,
   type DocumentPage,
