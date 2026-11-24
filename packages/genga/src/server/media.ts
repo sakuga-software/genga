@@ -261,11 +261,12 @@ export function createMedia(ctx: GengaContext) {
         );
       }
       await tx`DELETE FROM genga_media WHERE id = ${id}`;
+      // Record before the file deletes: a failure then rolls back before a file is gone. The price is
+      // that the global events lock waits for the storage I/O of this rare action.
+      await ctx.events.record(tx, [deleted]);
       for (const key of [row.key, ...(row.sizes ?? []).map((size) => size.key)]) {
         await ctx.storage.delete(key).catch((error) => ctx.log.warn('[genga] Media file delete failed:', error));
       }
-      // The events lock is global: take it after the storage I/O, so that a slow storage never holds back a publish.
-      await ctx.events.record(tx, [deleted]);
       return row;
     });
     try {
