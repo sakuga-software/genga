@@ -38,6 +38,7 @@ interface GengaSource {
 - `listDocuments` takes the query of the public API: `limit` (1 to 100), `cursor`, `tag` and
   `sort`. A bad query or an unknown collection throws a `GengaSourceError` with `status` and
   `code`, the same in both modes.
+- `sitemap` gives the path and the time of the last publish of every published document.
 - `tagsFor` gives the cache tags of a read. The [publish events](./events.md) carry the same
   tags.
 
@@ -75,11 +76,11 @@ token; it asks the server to check each one.
 
 ## Remote options
 
-| Option   | Purpose                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------- |
-| `url`    | The origin of the Genga server, for example `https://cms.example.com`.                                        |
-| `schema` | Your config. It gives the path of a renamed slug when the server does not send it (Genga 0.2).                |
-| `fetch`  | `(url, init, { tags, preview }) => Promise<Response>`. Add framework cache hints here, for example Next tags. |
+| Option   | Purpose                                                                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `url`    | The origin of the Genga server, for example `https://cms.example.com`.                                                                                                               |
+| `schema` | Your config. Its collections give the cache tags of `sitemap()`, so a publish invalidates it. It also gives the path of a renamed slug when the server does not send it (Genga 0.2). |
+| `fetch`  | `(url, init, { tags, preview }) => Promise<Response>`. Add framework cache hints here, for example Next tags.                                                                        |
 
 ```ts
 createRemoteSource({
@@ -88,3 +89,6 @@ createRemoteSource({
     fetch(url, preview ? { ...init, cache: 'no-store' } : { ...init, next: { tags } }),
 });
 ```
+
+The remote source follows the `301` of a renamed slug, or reads it when the `fetch` does not
+follow redirects. Both give the same `redirect` result.

@@ -1,5 +1,5 @@
 import type { GengaConfig } from '../config';
-import { tagsFor } from '../events';
+import { ALL_TAG, tagsFor } from '../events';
 import {
   GengaSourceError,
   previewHeaders,
@@ -22,7 +22,10 @@ export type RemoteFetch = (url: string, init: RequestInit, hints: RemoteFetchHin
 export type RemoteSourceOptions = {
   /** The origin of the Genga server, for example `https://cms.example.com`. */
   url: string;
-  /** The config of the site. It gives the paths of renamed slugs when an older server does not send them. */
+  /**
+   * The config of the site. Its collections give the cache tags of `sitemap()`. It also gives the
+   * paths of renamed slugs when an older server does not send them.
+   */
   schema?: Pick<GengaConfig, 'collections'>;
   /** Default: the global `fetch`. */
   fetch?: RemoteFetch;
@@ -52,7 +55,7 @@ export function createRemoteSource(options: RemoteSourceOptions): GengaSource {
   }
 
   async function request(url: string, hints: RemoteFetchHints): Promise<Response> {
-    return send(url, { headers: { Accept: 'application/json' }, redirect: 'manual' }, hints);
+    return send(url, { headers: { Accept: 'application/json' } }, hints);
   }
 
   async function fail(response: Response): Promise<never> {
@@ -72,8 +75,12 @@ export function createRemoteSource(options: RemoteSourceOptions): GengaSource {
       tags: tagsFor(collection, slug),
       preview: false,
     });
-    if (response.status === 200)
-      return { document: ((await response.json()) as { document: PublicDocument<T> }).document };
+    if (response.status === 200) {
+      const { document } = (await response.json()) as { document: PublicDocument<T> };
+      // A fetch that follows the 301 of a renamed slug returns the document of the new slug.
+      if (document.slug !== slug) return { moved: { slug: document.slug, path: document.path } };
+      return { document };
+    }
     if (response.status === 301) {
       const moved = (await response.json()) as MovedBody;
       const pathOf = options.schema?.collections[collection]?.path;
@@ -162,7 +169,10 @@ export function createRemoteSource(options: RemoteSourceOptions): GengaSource {
     getDraft: draft,
 
     async sitemap(): Promise<SitemapEntry[]> {
-      const response = await request(path('sitemap'), { tags: ['genga'], preview: false });
+      // Document events invalidate collection tags, not `genga`: the tags of the sitemap need the collections.
+      const collections = Object.keys(options.schema?.collections ?? {});
+      const tags = [ALL_TAG, ...collections.map((name) => tagsFor(name)[1])];
+      const response = await request(path('sitemap'), { tags, preview: false });
       if (response.status !== 200) return fail(response);
       return ((await response.json()) as { entries: SitemapEntry[] }).entries;
     },

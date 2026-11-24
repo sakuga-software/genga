@@ -295,6 +295,39 @@ describe('the two sources', () => {
     ]);
   });
 
+  it('finds a renamed slug with a fetch that follows redirects', async () => {
+    const following = createRemoteSource({
+      url: SITE,
+      fetch: async (url, init) => {
+        let response = (await genga.handle(new Request(url, init))) ?? new Response(null, { status: 404 });
+        const location = response.headers.get('location');
+        if (response.status === 301 && location) {
+          response = (await genga.handle(new Request(new URL(location, SITE), init))) as Response;
+        }
+        return response;
+      },
+    });
+    expect(await following.getDocument('journal', 'first-name')).toBeNull();
+    expect(
+      await following.resolveRoute(new Request(`${SITE}/journal/first-name`), 'journal', 'first-name'),
+    ).toMatchObject({ kind: 'redirect', location: '/journal/second-name', status: 301 });
+    expect(await following.getDocument('journal', 'live')).toMatchObject({ slug: 'live' });
+  });
+
+  it('tags the sitemap with the collections of the schema, so a publish invalidates it', async () => {
+    const hints: string[][] = [];
+    const withSchema = createRemoteSource({
+      url: SITE,
+      schema: testConfig,
+      fetch: async (url, init, { tags }) => {
+        hints.push(tags);
+        return (await genga.handle(new Request(url, init))) as Response;
+      },
+    });
+    await withSchema.sitemap();
+    expect(hints).toEqual([['genga', 'genga:c:journal']]);
+  });
+
   it('refuses a url that is not an origin', () => {
     expect(() => createRemoteSource({ url: 'not a url' })).toThrow(/origin/);
   });
