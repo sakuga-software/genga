@@ -11,6 +11,7 @@ import { audit } from './auth';
 import type { GengaContext } from './context';
 import { badRequest, forbidden, GengaError, notFound } from './errors';
 import { DEFAULT_MEDIA_PATH } from '../paths';
+import { mediaEvent } from './events';
 
 export const ALLOWED_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -205,9 +206,15 @@ export function createMedia(ctx: GengaContext) {
     if (!current) throw notFound('Média introuvable.');
     // The alt text shows on every published page that uses the media.
     if (current.created_by !== user.id && !canPublishSomewhere(user)) throw forbidden();
-    const [row] = await sql<MediaRow[]>`UPDATE genga_media SET alt = ${text} WHERE id = ${id} RETURNING *`;
-    if (!row) throw notFound('Média introuvable.');
+    const { row, events } = await sql.begin(async (tx) => {
+      const [row] = await tx<MediaRow[]>`UPDATE genga_media SET alt = ${text} WHERE id = ${id} RETURNING *`;
+      if (!row) throw notFound('Média introuvable.');
+      const events = [mediaEvent('media.updated', id, new Date().toISOString())];
+      await ctx.events.record(tx, events);
+      return { row, events };
+    });
     for (const name of Object.keys(ctx.config.collections)) ctx.cache.invalidate(name);
+    await ctx.events.dispatch(events);
     return toMediaItem(row);
   }
 
@@ -239,6 +246,7 @@ export function createMedia(ctx: GengaContext) {
   async function remove(user: PublicUser, id: string) {
     if (!can(user, 'media.delete')) throw forbidden();
     if (!isUuid(id)) throw notFound('Média introuvable.');
+    const deleted = mediaEvent('media.deleted', id, new Date().toISOString());
     const row = await sql.begin(async (tx) => {
       const [row] = await tx<MediaRow[]>`SELECT * FROM genga_media WHERE id = ${id} FOR UPDATE`;
       if (!row) throw notFound('Média introuvable.');
@@ -253,12 +261,14 @@ export function createMedia(ctx: GengaContext) {
         );
       }
       await tx`DELETE FROM genga_media WHERE id = ${id}`;
+      await ctx.events.record(tx, [deleted]);
       for (const key of [row.key, ...(row.sizes ?? []).map((size) => size.key)]) {
         await ctx.storage.delete(key).catch((error) => ctx.log.warn('[genga] Media file delete failed:', error));
       }
       return row;
     });
     await audit(ctx, user.id, 'media.delete', { detail: { mediaId: id, filename: row.filename } });
+    await ctx.events.dispatch([deleted]);
   }
 
   /** The metadata of one media item, without an access check. Its files are public too. */

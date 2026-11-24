@@ -9,6 +9,7 @@ import { audit } from './auth';
 import type { GengaContext } from './context';
 import { badRequest, forbidden, GengaError, isUniqueViolation, notFound } from './errors';
 import { loadMediaMap } from './media';
+import { documentEvent } from './events';
 import { previewTarget } from './preview';
 
 type DocumentRow = {
@@ -355,33 +356,82 @@ export function createDocuments(ctx: GengaContext) {
         WHERE id = ${id}
         RETURNING published_at
       `;
+      const previousSlug = row.first_published_at && slug !== row.slug ? row.slug : null;
+      const eventInput = {
+        collection: row.collection,
+        documentId: id,
+        slug,
+        path: collection.path,
+        previousSlug,
+        versionId: version.id,
+        at: new Date().toISOString(),
+      };
+      const events = [documentEvent('document.published', eventInput)];
+      if (previousSlug) events.push(documentEvent('document.slug_changed', eventInput));
+      await ctx.events.record(tx, events);
       return {
+        events,
         collection: row.collection,
         slug,
-        previousSlug: row.first_published_at && slug !== row.slug ? row.slug : null,
+        previousSlug,
         versionId: version.id,
         publishedAt: updated.published_at.toISOString(),
         previewPath: collection.path(slug),
       };
     });
-    ctx.cache.invalidate(result.collection);
+    const { events, ...published } = result;
+    ctx.cache.invalidate(published.collection);
     await audit(ctx, user.id, 'document.publish', {
-      collection: result.collection,
+      collection: published.collection,
       documentId: id,
-      detail: { versionId: result.versionId, previousSlug: result.previousSlug },
+      detail: { versionId: published.versionId, previousSlug: published.previousSlug },
     });
-    return { ...result, status: 'published' as DocumentStatus };
+    await ctx.events.dispatch(events);
+    return { ...published, status: 'published' as DocumentStatus };
+  }
+
+  /**
+   * Takes the document offline in one transaction. An event goes to the outbox only when the
+   * document was live: the events endpoint is public, and a draft slug must stay private.
+   */
+  async function takeOffline(user: PublicUser, id: string, action: 'publish' | 'delete', remove: boolean) {
+    if (!isUuid(id)) throw notFound();
+    const { row, events } = await sql.begin(async (tx) => {
+      const [row] = await tx<DocumentRow[]>`
+        SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
+      `;
+      if (!row) throw notFound('Document introuvable.');
+      assertCan(user, action, row);
+      await tx`
+        UPDATE genga_documents
+        SET published_version_id = NULL, published_rev = NULL, published_at = NULL
+          ${remove ? tx`, deleted_at = now()` : tx``}
+        WHERE id = ${id}
+      `;
+      const events = row.published_version_id
+        ? [
+            documentEvent(remove ? 'document.deleted' : 'document.unpublished', {
+              collection: row.collection,
+              documentId: id,
+              slug: row.slug,
+              path: collectionOf(row.collection).path,
+              at: new Date().toISOString(),
+            }),
+          ]
+        : [];
+      await ctx.events.record(tx, events);
+      return { row, events };
+    });
+    ctx.cache.invalidate(row.collection);
+    await audit(ctx, user.id, remove ? 'document.delete' : 'document.unpublish', {
+      collection: row.collection,
+      documentId: id,
+    });
+    await ctx.events.dispatch(events);
   }
 
   async function unpublish(user: PublicUser, id: string) {
-    const row = await findRow(id);
-    assertCan(user, 'publish', row);
-    await sql`
-      UPDATE genga_documents SET published_version_id = NULL, published_rev = NULL, published_at = NULL
-      WHERE id = ${id}
-    `;
-    ctx.cache.invalidate(row.collection);
-    await audit(ctx, user.id, 'document.unpublish', { collection: row.collection, documentId: id });
+    await takeOffline(user, id, 'publish', false);
     return { status: 'draft' as DocumentStatus };
   }
 
@@ -465,15 +515,7 @@ export function createDocuments(ctx: GengaContext) {
 
   /** Unpublishes, then soft deletes. The slug becomes free again. */
   async function remove(user: PublicUser, id: string) {
-    const row = await findRow(id);
-    assertCan(user, 'delete', row);
-    await sql`
-      UPDATE genga_documents
-      SET published_version_id = NULL, published_rev = NULL, published_at = NULL, deleted_at = now()
-      WHERE id = ${id}
-    `;
-    ctx.cache.invalidate(row.collection);
-    await audit(ctx, user.id, 'document.delete', { collection: row.collection, documentId: id });
+    await takeOffline(user, id, 'delete', true);
   }
 
   return {

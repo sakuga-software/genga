@@ -19,6 +19,14 @@ All notable changes to the `genga` package. The format follows
 - The `mcp` option takes `path` and `false`. MCP is off in `genga.handle` unless the option is
   set.
 - Public API: the `301` of a renamed slug also gives `path`, the site path of the new slug.
+- Publish events: `document.published`, `document.unpublished`, `document.deleted`,
+  `document.slug_changed`, `media.updated` and `media.deleted`, each with the cache tags
+  `genga`, `genga:c:<collection>` and `genga:d:<collection>:<slug>`. `genga.events.on()` runs
+  listeners after the commit. `tagsFor()` gives the same tags to reads. See `docs/events.md`.
+- Signed webhooks in the Standard Webhooks format (`webhooks` option, `GENGA_WEBHOOKS` on the
+  server image), from an outbox table with retries and backoff for 24 hours. Migration
+  `0004_events`. `verifyWebhook()` checks them on Node and edge runtimes.
+- Public API: `GET /api/v1/events?after=<id>` lists the events of the last 7 days.
 
 ### Deprecated
 

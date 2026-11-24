@@ -98,7 +98,7 @@ beforeEach(async () => {
   await genga.close();
   genga = start();
   await genga.sql`
-    TRUNCATE genga_audit, genga_redirects, genga_versions, genga_documents, genga_media, genga_tokens, genga_sessions, genga_users CASCADE
+    TRUNCATE genga_events, genga_audit, genga_redirects, genga_versions, genga_documents, genga_media, genga_tokens, genga_sessions, genga_users CASCADE
   `;
 });
 

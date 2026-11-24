@@ -78,24 +78,25 @@ The images are for `linux/amd64` and `linux/arm64`, with provenance and SBOM att
 
 ## Environment
 
-| Variable                | Default                                  | Purpose                                                                                                                                |
-| ----------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`          | required                                 | Postgres 14 or later.                                                                                                                  |
-| `GENGA_CONFIG`          | `/config/genga.config.json`, then `.mjs` | The [config file](#the-config-file).                                                                                                   |
-| `GENGA_PUBLIC_URL`      | `http://localhost:$PORT`                 | The origin of this server, as browsers see it. Media URLs and setup links start with it. With `https`, the session cookie is `Secure`. |
-| `GENGA_ADMIN_PATH`      | `/admin`                                 | The admin path, one segment. The admin API is under `<path>/api`.                                                                      |
-| `GENGA_MEDIA_DIR`       | `/data/media`                            | The media directory.                                                                                                                   |
-| `GENGA_CORS_ORIGINS`    | none                                     | Comma-separated origins that can read the public API from a browser, or `*`.                                                           |
-| `GENGA_PREVIEW_ORIGINS` | none                                     | Comma-separated origins of the preview pages. Each `previewUrl` on another origin must be in this list.                                |
-| `GENGA_SECRET`          | none                                     | 32 characters or more. Signs the preview tokens. Required when a preview is on another origin.                                         |
-| `GENGA_ALLOWED_ORIGINS` | none                                     | More origins that can send writes to the admin API. The origin of `GENGA_PUBLIC_URL` always can.                                       |
-| `GENGA_TRUSTED_PROXIES` | `0`                                      | The number of reverse proxies in front of the server. See below.                                                                       |
-| `GENGA_RATE_LIMIT`      | `300`                                    | Requests per minute and per client address on the public API.                                                                          |
-| `GENGA_ADMIN_EMAIL`     | none                                     | The email of the first admin, filled in the setup form.                                                                                |
-| `GENGA_SITE_URL`        | none                                     | The public site, for the link "Voir le site" of the admin. Without it, the admin hides the link.                                       |
-| `GENGA_MCP`             | `on`                                     | `off` turns the [MCP endpoint](./mcp.md) off.                                                                                          |
-| `GENGA_MCP_PATH`        | `/mcp`                                   | The path of the MCP endpoint, one segment.                                                                                             |
-| `PORT`                  | `3000`                                   | The port in the container.                                                                                                             |
+| Variable                | Default                                  | Purpose                                                                                                                                  |
+| ----------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`          | required                                 | Postgres 14 or later.                                                                                                                    |
+| `GENGA_CONFIG`          | `/config/genga.config.json`, then `.mjs` | The [config file](#the-config-file).                                                                                                     |
+| `GENGA_PUBLIC_URL`      | `http://localhost:$PORT`                 | The origin of this server, as browsers see it. Media URLs and setup links start with it. With `https`, the session cookie is `Secure`.   |
+| `GENGA_ADMIN_PATH`      | `/admin`                                 | The admin path, one segment. The admin API is under `<path>/api`.                                                                        |
+| `GENGA_MEDIA_DIR`       | `/data/media`                            | The media directory.                                                                                                                     |
+| `GENGA_CORS_ORIGINS`    | none                                     | Comma-separated origins that can read the public API from a browser, or `*`.                                                             |
+| `GENGA_PREVIEW_ORIGINS` | none                                     | Comma-separated origins of the preview pages. Each `previewUrl` on another origin must be in this list.                                  |
+| `GENGA_SECRET`          | none                                     | 32 characters or more. Signs the preview tokens. Required when a preview is on another origin.                                           |
+| `GENGA_ALLOWED_ORIGINS` | none                                     | More origins that can send writes to the admin API. The origin of `GENGA_PUBLIC_URL` always can.                                         |
+| `GENGA_TRUSTED_PROXIES` | `0`                                      | The number of reverse proxies in front of the server. See below.                                                                         |
+| `GENGA_RATE_LIMIT`      | `300`                                    | Requests per minute and per client address on the public API.                                                                            |
+| `GENGA_ADMIN_EMAIL`     | none                                     | The email of the first admin, filled in the setup form.                                                                                  |
+| `GENGA_SITE_URL`        | none                                     | The public site, for the link "Voir le site" of the admin. Without it, the admin hides the link.                                         |
+| `GENGA_MCP`             | `on`                                     | `off` turns the [MCP endpoint](./mcp.md) off.                                                                                            |
+| `GENGA_MCP_PATH`        | `/mcp`                                   | The path of the MCP endpoint, one segment.                                                                                               |
+| `GENGA_WEBHOOKS`        | none                                     | A JSON array of `{ "url", "secret", "events" }`: the receivers of the [publish webhooks](./events.md). The secret is not `GENGA_SECRET`. |
+| `PORT`                  | `3000`                                   | The port in the container.                                                                                                               |
 
 The three origin lists are separate on purpose. A CORS origin can only read published
 content. A preview origin can only read drafts with a token. Neither can write.

@@ -164,6 +164,8 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `logger`              | `console`                         | `{ info, warn, error }`.                                                                              |
 | `mcp`                 | off in `genga.handle`             | `{ path, allowedOrigins }` turns the [MCP endpoint](./mcp.md) on. `path` defaults to `/mcp`.          |
 | `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the MCP endpoint. A request without `Origin` passes.                    |
+| `webhooks`            | `GENGA_WEBHOOKS`                  | `[{ url, secret, events? }]`: receivers of the signed [publish webhooks](./events.md).                |
+| `webhookDelivery`     | `{}`                              | `{ fetch, pollMs, timeoutMs }` of the webhook sender.                                                 |
 
 ## One handler: `genga.handle`
 

@@ -139,4 +139,33 @@ CREATE TABLE genga_api_tokens (
 CREATE INDEX genga_api_tokens_user_idx ON genga_api_tokens (user_id, created_at DESC);
 `,
   },
+  {
+    // The outbox of publish events. `seq` follows the commit order: writers take an advisory lock first.
+    // A delivery row per event and webhook URL holds the retry state.
+    id: '0004_events',
+    sql: `
+CREATE TABLE genga_events (
+  seq bigserial PRIMARY KEY,
+  id uuid NOT NULL UNIQUE,
+  type text NOT NULL,
+  at timestamptz NOT NULL,
+  event jsonb NOT NULL
+);
+CREATE INDEX genga_events_at_idx ON genga_events (at);
+
+CREATE TABLE genga_webhook_deliveries (
+  event_seq bigint NOT NULL REFERENCES genga_events (seq) ON DELETE CASCADE,
+  url text NOT NULL,
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL,
+  delivered_at timestamptz,
+  failed_at timestamptz,
+  last_status integer,
+  last_error text,
+  PRIMARY KEY (event_seq, url)
+);
+CREATE INDEX genga_webhook_deliveries_due_idx ON genga_webhook_deliveries (next_attempt_at)
+  WHERE delivered_at IS NULL AND failed_at IS NULL;
+`,
+  },
 ];

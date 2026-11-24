@@ -85,3 +85,13 @@ The [headless server](./headless-server.md) serves published content only. It li
 client address with a token bucket (`GENGA_RATE_LIMIT` per minute) and sends CORS headers
 only to `GENGA_CORS_ORIGINS`. Media files of the server send
 `Cross-Origin-Resource-Policy: cross-origin`, so that other origins can show them.
+
+## Webhooks
+
+[Publish webhooks](./events.md) are signed with HMAC-SHA256 in the Standard Webhooks format,
+with a secret per receiver. Genga refuses to start if a webhook secret is `GENGA_SECRET`: the
+receiver holds its secret, and the preview secret would let it sign a preview token for any
+draft. The secret stays out of logs and error messages. Receivers reject a timestamp more than
+5 minutes away, answer `401` on a bad signature, and ignore a `webhook-id` that they already
+handled. The events endpoint and the webhooks carry only content that was live: a draft that
+was never published gives no event.

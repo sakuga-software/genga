@@ -9,6 +9,7 @@ import type { GengaMedia } from './media';
 import { verifyPreviewToken } from './preview';
 import type { GengaPublished } from './published';
 import { TokenBuckets } from './token-bucket';
+import { isUuid } from '../uuid';
 
 export const PUBLIC_API_PATH = '/api/v1';
 
@@ -22,6 +23,7 @@ export type PublicApiOptions = {
 };
 
 const MAX_LIMIT = 100;
+const MAX_EVENTS = 500;
 const DEFAULT_LIMIT = 20;
 const SORTABLE = new Set(['text', 'textarea', 'slug', 'date', 'number', 'select', 'boolean']);
 
@@ -308,6 +310,24 @@ export function createPublicApi(
       return json({
         media: { ...toPublicMedia(item, ctx.siteUrl), size: item.size, createdAt: item.createdAt },
       });
+    }
+    if (resource === 'events' && !name) {
+      const after = url.searchParams.get('after');
+      if (after !== null && !isUuid(after)) throw badRequest('after must be the id of an event.');
+      const limitParam = url.searchParams.get('limit');
+      const limit = limitParam === null ? MAX_EVENTS : Number(limitParam);
+      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_EVENTS) {
+        throw badRequest(`limit must be an integer from 1 to ${MAX_EVENTS}.`);
+      }
+      const page = await ctx.events.list(after, limit);
+      if (!page) {
+        throw new PublicApiError(
+          410,
+          'cursor_expired',
+          'This event is unknown or older than 7 days. Invalidate the tag "genga", then read again without after.',
+        );
+      }
+      return respond(request, 200, page, { cache: 'none', cors: corsOrigins });
     }
     if (resource === 'preview' && name && !sub) {
       return respond(request, 200, await preview(name, url), {

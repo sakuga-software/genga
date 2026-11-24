@@ -179,6 +179,44 @@ paths:
         '304': { $ref: '#/components/responses/NotModified' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
+  /events:
+    get:
+      operationId: listEvents
+      summary: The publish events of the last 7 days, oldest first
+      description: |
+        For a site that missed a webhook. Each event carries the cache tags to invalidate.
+        See docs/events.md.
+      parameters:
+        - name: after
+          in: query
+          description: The id of the last event that the site handled. Without it, the list starts 7 days ago.
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 500 }
+      responses:
+        '200':
+          description: The events after the cursor.
+          headers:
+            Cache-Control:
+              schema: { const: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, hasMore]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/Event' }
+                  hasMore: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '410':
+          description: The cursor is unknown or older than 7 days. Invalidate the tag `genga`, then read again without `after`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
   /preview/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -269,8 +307,48 @@ components:
       properties:
         error:
           type: string
-          enum: [bad_request, invalid_token, not_found, method_not_allowed, rate_limited, internal, moved, unavailable]
+          enum:
+            [
+              bad_request,
+              invalid_token,
+              not_found,
+              method_not_allowed,
+              rate_limited,
+              internal,
+              moved,
+              unavailable,
+              cursor_expired,
+            ]
         message: { type: string }
+    Event:
+      type: object
+      required: [id, type, at, collection, documentId, slug, path, previous, versionId, tags]
+      properties:
+        id: { type: string, format: uuid, description: The same id as the webhook-id header. }
+        type:
+          type: string
+          enum:
+            [
+              document.published,
+              document.unpublished,
+              document.deleted,
+              document.slug_changed,
+              media.updated,
+              media.deleted,
+            ]
+        at: { type: string, format: date-time }
+        collection: { type: [string, 'null'] }
+        documentId: { type: [string, 'null'] }
+        slug: { type: [string, 'null'] }
+        path: { type: [string, 'null'] }
+        previous:
+          type: [object, 'null']
+          properties:
+            slug: { type: string }
+            path: { type: string }
+        versionId: { type: [string, 'null'] }
+        tags: { type: array, items: { type: string } }
+        mediaId: { type: string, description: Media events only. }
     Field:
       type: object
       required: [type]

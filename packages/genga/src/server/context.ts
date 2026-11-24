@@ -2,6 +2,7 @@ import type { Sql } from 'postgres';
 import type { GengaConfig } from '../config';
 import type { BlockSchemas } from '../fields/schema';
 import type { PublishedCache } from './cache';
+import type { GengaEventBus } from './events';
 import type { StorageAdapter } from './storage/adapter';
 
 export type GengaLogger = Pick<Console, 'info' | 'warn' | 'error'>;
@@ -12,6 +13,8 @@ export type GengaContext = {
   blocks: BlockSchemas;
   storage: StorageAdapter;
   cache: PublishedCache;
+  /** The outbox and the listeners of the publish events. */
+  events: GengaEventBus;
   log: GengaLogger;
   siteUrl: string;
   /** Base path of the admin, for example `/admin`. The admin API is under `<adminPath>/api`. */
