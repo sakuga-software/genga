@@ -131,11 +131,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [error, slug]
+                required: [error, slug, path]
                 properties:
                   error: { const: moved }
                   message: { type: string }
                   slug: { type: string }
+                  path: { type: string, description: The path of the new slug on the site. }
         '304': { $ref: '#/components/responses/NotModified' }
         '404': { $ref: '#/components/responses/NotFound' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -268,7 +269,7 @@ components:
       properties:
         error:
           type: string
-          enum: [bad_request, invalid_token, not_found, method_not_allowed, rate_limited, internal, moved]
+          enum: [bad_request, invalid_token, not_found, method_not_allowed, rate_limited, internal, moved, unavailable]
         message: { type: string }
     Field:
       type: object

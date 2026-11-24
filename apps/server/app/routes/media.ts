@@ -1,6 +1,4 @@
-import { getServer } from '../.server/genga';
+import { handleOrNotFound } from '../.server/genga';
 import type { Route } from './+types/media';
 
-export async function loader({ params }: Route.LoaderArgs) {
-  return (await getServer()).genga.media.serve(params['*'] ?? '');
-}
+export const loader = ({ request }: Route.LoaderArgs) => handleOrNotFound(request);

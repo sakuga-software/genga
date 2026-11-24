@@ -120,6 +120,19 @@ function parseCookies(header: string | null): Map<string, string> {
  * so the client is the value at position `trustedProxies` from the right.
  * The values on its left come from the client and can be false.
  */
+const PEER_HOPS = new WeakSet<Request>();
+
+/** Marks a request whose last `X-Forwarded-For` hop is the TCP peer that `genga.handle` appended. */
+export function markPeerHop(request: Request): Request {
+  PEER_HOPS.add(request);
+  return request;
+}
+
+/** The client address of a request, with the peer hop of `genga.handle` counted as one more proxy. */
+export function clientAddress(request: Request, trustedProxies: number): string {
+  return clientIp(request, trustedProxies + (PEER_HOPS.has(request) ? 1 : 0));
+}
+
 export function clientIp(request: Request, trustedProxies = 1): string {
   if (trustedProxies < 1) return 'unknown';
   const hops = (request.headers.get('x-forwarded-for') ?? '')
@@ -187,7 +200,7 @@ export function createAuth(ctx: GengaContext) {
 
   async function login(request: Request, emailInput: unknown, password: unknown): Promise<{ cookie: string }> {
     const email = typeof emailInput === 'string' ? emailInput.trim().toLowerCase() : '';
-    const ip = clientIp(request, ctx.trustedProxies);
+    const ip = clientAddress(request, ctx.trustedProxies);
     const pair = `${email}\u0000${ip}`;
     // Count the attempt as a failure before the first await, so parallel requests see it.
     if (ipLimiter.isLimited(ip) || pairLimiter.isLimited(pair) || emailLimiter.isLimited(email)) throw rateLimited();
@@ -283,7 +296,7 @@ export function createAuth(ctx: GengaContext) {
     token: string,
     input: { name?: unknown; email?: unknown; password?: unknown },
   ): Promise<{ cookie: string }> {
-    const ip = clientIp(request, ctx.trustedProxies);
+    const ip = clientAddress(request, ctx.trustedProxies);
     if (setupLimiter.isLimited(ip)) throw rateLimited();
     setupLimiter.hit(ip);
     const password = checkPassword(input.password);

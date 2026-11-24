@@ -1,7 +1,9 @@
 # Public API (v1)
 
 The [headless server](./headless-server.md) serves a read-only JSON API under `/api/v1`. A
-site in any stack reads the published content with it. The machine-readable description is
+site in any stack reads the published content with it. Any app that mounts
+[`genga.handle`](./configuration.md#one-handler-gengahandle) can serve the same API with the
+`publicApi` option. It is off by default there. The machine-readable description is
 [`openapi.yaml`](./openapi.yaml) (OpenAPI 3.1).
 
 - Only published content. A draft leaves the server only through the
@@ -179,7 +181,8 @@ curl 'https://cms.example.com/api/v1/collections/posts/documents?limit=2&tag=new
 One published document by slug: `{ "document": { … } }`.
 
 If the slug changed after a publish, the old slug answers `301` with `Location` set to the
-new API URL, and the body `{ "error": "moved", "slug": "<new slug>" }`. `fetch` follows the
+new API URL, and the body `{ "error": "moved", "slug": "<new slug>", "path": "<site path>" }`.
+`path` is the path of the new slug on the site, for example `/blog/new-slug`. `fetch` follows the
 redirect: check `response.redirected` to send a `301` from your own page too.
 
 ```js

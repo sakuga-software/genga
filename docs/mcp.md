@@ -25,8 +25,9 @@ The endpoint URL is `GENGA_PUBLIC_URL` plus the path, for example
 
 ### In your React Router app
 
-`genga.mcp(request)` is a fetch-style handler: it takes a `Request` and returns a `Response`.
-Route POST, GET and DELETE of one path to it. With React Router, a resource route does this:
+Turn the endpoint on with the `mcp` option of `createGenga`, then let
+[`genga.handle`](./configuration.md#one-handler-gengahandle) answer its path. Route POST, GET
+and DELETE of the path to it. With React Router, a resource route does this:
 
 ```ts
 // app/routes.ts
@@ -35,14 +36,18 @@ route('/mcp', 'routes/mcp.ts'),
 
 ```ts
 // app/routes/mcp.ts
+// createGenga(config, { …, mcp: { path: '/mcp' } })
 import { genga } from '../.server/genga';
 
-export const loader = ({ request }: { request: Request }) => genga.mcp(request);
-export const action = ({ request }: { request: Request }) => genga.mcp(request);
+export const loader = async ({ request }: { request: Request }) =>
+  (await genga.handle(request)) ?? new Response('Not found', { status: 404 });
+export const action = loader;
 ```
 
+`genga.mcp(request)`, the handler of 0.2, still works and is deprecated.
+
 Any other framework that speaks `Request` and `Response` (Hono, Next.js route handlers,
-Remix, Bun, Deno) can call it the same way. The option `mcp.allowedOrigins` of `createGenga`
+Remix, Bun, Deno) can call `genga.handle` the same way. The option `mcp.allowedOrigins` of `createGenga`
 sets the browser origins that can call it (see [Security](#security-model)).
 
 ## Create a token

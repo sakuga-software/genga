@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { API_SCOPES, can, type ApiScope } from '../access';
 import type { ApiTokenItem, PublicUser } from '../types';
 import { isUuid } from '../uuid';
-import { audit, clientIp, hashToken, toPublicUser } from './auth';
+import { audit, clientAddress, hashToken, toPublicUser } from './auth';
 import type { GengaContext } from './context';
 import { badRequest, GengaError, notFound } from './errors';
 import { RateLimiter } from './rate-limit';
@@ -152,7 +152,7 @@ export function createApiTokens(ctx: GengaContext) {
     if (token === null) return null;
     // A valid token always passes: the limit applies to bad tokens only, so that bad tokens
     // from a shared address (a NAT, a proxy, an unknown address) cannot lock out other clients.
-    const ip = clientIp(request, ctx.trustedProxies);
+    const ip = clientAddress(request, ctx.trustedProxies);
     const refuse = () => {
       const limited = ip !== 'unknown' && failures.isLimited(ip);
       if (ip !== 'unknown') failures.hit(ip);
