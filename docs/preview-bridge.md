@@ -83,6 +83,10 @@ sign a token for any draft. The site checks a token with `GET /api/v1/preview/:i
   requests of the page.
 - `connectPreview` removes `genga-token` from the address bar with `history.replaceState` and
   keeps it in memory. `connection.token()` and `previewToken(id)` give the current token.
+  A full reload of the frame starts from the address bar, which no longer has the token, so
+  the server answers not found. Refresh without a full reload (fetch the page with the token
+  and swap its content, or a framework refresh that sends the token), or put the token back in
+  the URL before you reload.
 - The editor sends a fresh token with `genga:token` 2 minutes before the current one expires,
   as long as the frame is open.
 
