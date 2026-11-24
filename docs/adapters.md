@@ -110,7 +110,7 @@ mode.
 | HTTP surface               | `genga.handle(request, context?)`: one Fetch handler             | Mounts it on framework routes; passes the client address        |
 | Admin UI                   | Prebuilt SPA: HTML shell, assets, admin API                      | Nothing: the handler serves it                                  |
 | Content reads              | `GengaSource`: `getDocument`, `listDocuments`, `resolveRoute`, … | Wraps them for the data loading of the framework, adds caching  |
-| Preview                    | Token signing and checks, `connectPreview`, bridge messages      | Detects preview mode, injects the bridge client, refresh method |
+| Preview                    | Session and token checks, `connectPreview`, bridge messages      | Detects preview mode, injects the bridge client, refresh method |
 | Rendering                  | `richTextToHtml`, `toPublicData`, block annotations              | Block registry and components for its component model           |
 | Cache invalidation         | Events, tags, signed webhooks                                    | Maps tags to `revalidateTag`, `Astro.cache`, Nitro storage, …   |
 | Database, auth, media, MCP | All of it                                                        | Nothing                                                         |
@@ -255,8 +255,9 @@ interface GengaSource {
   `unknown`.
 - `ListQuery` matches the public API: `limit`, `cursor`, `tag`, `sort`. The embedded source implements the same
   paging.
-- `PreviewInput` is `{ documentId, token }` for frameworks that give no `Request` to a page (Next Server
-  Components). The adapter reads it from its own preview cookie.
+- `PreviewInput` is `{ documentId, token?, cookie? }` for frameworks that give no `Request` to a page (Next Server
+  Components): the token in remote mode, the `Cookie` header (admin session) in embedded mode. The adapter builds it
+  from its own preview cookie and `cookies()`.
 - **One tag set.** `RouteResult.cache.tags` is `tagsFor(collection, slug)`. A redirect result also carries the tag
   of the old slug.
 - **Conformance.** One test suite runs against both sources: same results, same tags, same errors, for published,
@@ -359,8 +360,7 @@ image (a JSON array of the same objects).
 - **Reconciliation.** `GET /api/v1/events?after=<id>` lists recent events (7 days). An adapter calls it at start and
   every 5 minutes, so a missed webhook (site down, network) still invalidates its cache.
 - **Safety TTL.** Adapter caches default to a `maxAge` of one hour, never "forever".
-- Receivers reject a timestamp older than 5 minutes.
-- The secret is separate from `GENGA_SECRET`. Each adapter ships a receiver (section 7).
+- Receivers (one per adapter) reject a timestamp older than 5 minutes. The secret is not `GENGA_SECRET`.
 
 ## 4. Packages and names
 
@@ -445,16 +445,16 @@ in their own framework, and the admin never loads them. The adapter gives the pa
 | `GENGA_MEDIA_DIR`       | embedded | Local media directory                                                   |
 | `GENGA_TRUSTED_PROXIES` | embedded | Proxies in front of the app                                             |
 
-In remote mode, the site checks preview tokens with `GET /api/v1/preview/:id`.
-
 ## 7. Adapters
 
 Every adapter gives the same six capabilities, with idiomatic names: **mount** `handle` (routes, hook, module or
 integration), **read** through the source, **preview** (detect it, connect the bridge, refresh), **blocks**
 (`<Blocks>`, `defineBlockComponents`), **cache** (map event tags to the framework cache), and a **webhook**
 receiver. The shared code (`verifyWebhook`, `tagsFor`, `resolveRoute`, the bridge) lives in `genga`, so an adapter
-stays small. Each adapter registers its event listener where publishes happen (its handler module), and keeps one
-`genga` instance per process with a `globalThis` guard, as the React Router example does today.
+stays small. Site code that needs the signed-in Genga user (an "Edit this page" link, for example) calls
+`genga.getUser(request)` in embedded mode; remote mode has no such helper in v1. Each adapter registers its event
+listener where publishes happen (its handler module), and keeps one `genga` instance per process with a `globalThis`
+guard, as the React Router example does today.
 
 ### 7.1 Next.js (`@genga-cms/next`), GNG-4
 
@@ -478,12 +478,13 @@ and `draftMode()`, `revalidateTag(tag, profile)`, and `proxy.ts` in place of `mi
   the adapter calls `revalidateTag(tag, { expire: 0 })` for each tag. In embedded mode this runs in the admin route
   handler that published, which Next allows. In remote mode, `app/api/genga/webhook/route.ts` receives the webhook.
 - **Preview.** The `previewUrl` of each collection points to the entry route
-  `app/api/genga/preview/route.ts?genga-preview=<id>&genga-token=<token>&path=<path>`. It checks the token (session
-  in embedded mode), calls `(await draftMode()).enable()`, sets a `genga-preview` cookie (document id and token,
-  `HttpOnly`, `Secure`, `SameSite=None`, `Partitioned`, `Max-Age` equal to the token life), and redirects to `path`,
-  which must be a relative path. `loadPage` checks the token again at each request. If it expired, `loadPage`
-  returns the published document and the bridge asks the editor for a new token. Next sets the Draft Mode cookie
-  itself; its `SameSite` in a cross-site iframe is a risk (section 14).
+  `app/api/genga/preview/route.ts?genga-preview=<id>&path=<path>` (plus `&genga-token=<token>` in remote mode). It
+  checks the session (embedded) or the token (remote), calls `(await draftMode()).enable()`, sets a `genga-preview`
+  cookie (`HttpOnly`, `Secure`, `SameSite=None`, `Partitioned`), and redirects to `path`, which must be a relative
+  path. In embedded mode the cookie holds the document id, and `loadPage` checks the session at each request. In
+  remote mode it holds the id and the token, with `Max-Age` equal to the token life; `loadPage` checks the token at
+  each request, returns the published document after expiry, and the bridge asks the editor for a new token. Next
+  sets the Draft Mode cookie itself; its `SameSite` in a cross-site iframe is a risk (section 14).
 - **Live level.** Client blocks get `usePreviewData`. Server Component blocks get the refresh level:
   `<GengaPreview />` (a client component) calls `router.refresh()` on `genga:saved`.
 - **CSP.** If `proxy.ts` sets a nonce CSP, its `matcher` must exclude `/admin` and `/media`.
@@ -590,9 +591,9 @@ Supported: Nuxt `^4.2` (Nitro 2, h3 1). Node 22 or later. The module keeps an ey
   group `genga`, with keys built from the tags, and removes the matching keys from `useStorage('cache')` on an
   event. Embedded reads already use the core cache. The module does not manage `routeRules` `swr` or `isr` page
   caches in v1: a site that enables them on Genga pages accepts their TTL.
-- **Preview.** `useGengaPage` detects the token in the route query. In preview it sets `no-store` headers and
-  connects the bridge: Vue blocks get the live level (reactive data). Nuxt `usePreviewMode` is not used: it enables
-  on `?preview=true`, and Genga already has its own parameters.
+- **Preview.** `useGengaPage` detects `genga-preview` in the route query (and the token in remote mode). In preview
+  it sets `no-store` headers and connects the bridge: Vue blocks get the live level (reactive data). Nuxt
+  `usePreviewMode` is not used: it enables on `?preview=true`, and Genga already has its own parameters.
 - **Security.** Nitro has no default Origin check; the core check covers Genga routes.
 
 ```ts
@@ -646,8 +647,9 @@ window and the API changes make two variants too costly.
   in the adapter, keyed by tags and cleared by the webhook endpoint (`/_genga/webhook`, handled in the hook). CDN
   caching uses `setHeaders` with the ETag. adapter-vercel ISR can use `bypassToken` and a revalidation request per
   path.
-- **Preview.** The token is in `url.searchParams`. `gengaPreview(data)` returns a `$state` object that the bridge
-  updates: Svelte blocks get the live level. Server-only data falls back to `refreshAll()` on `genga:saved`.
+- **Preview.** `resolveRoute(request, …)` reads `genga-preview` (and the token in remote mode) from the URL.
+  `gengaPreview(data)` returns a `$state` object that the bridge updates: Svelte blocks get the live level.
+  Server-only data falls back to `refreshAll()` on `genga:saved`.
 - **CSP.** `kit.csp` applies only to pages that SvelteKit renders, so the hook response of the admin keeps its own
   CSP.
 
@@ -786,9 +788,9 @@ site needs one on-demand route, or the client-only preview with `connectPreview`
 ### 8.3 Edge runtimes
 
 Embedded Genga needs Node: the `postgres` TCP driver, `sharp`, scrypt and the file system. These run on the edge:
-`createRemoteSource` (`fetch` only), the preview token and webhook checks (the core moves its HMAC code from
-`node:crypto` to WebCrypto), `richTextToHtml`, the renderers and `genga/preview`. An edge site therefore uses remote
-mode.
+`createRemoteSource` (`fetch` only; it checks preview tokens through the API), the webhook check (the core moves its
+HMAC code from `node:crypto` to WebCrypto), `richTextToHtml`, the renderers and `genga/preview`. An edge site
+therefore uses remote mode.
 
 ## 9. Security
 
@@ -857,8 +859,9 @@ Each adapter ships an example in `examples/<framework>`, with the content model 
 
 **`genga@0.x` React Router apps.** Nothing breaks in the release that adds the adapters:
 
-- `genga/admin` route components, `genga.admin.*` loaders, `genga.api`, `genga.mcp`, `genga.media.serve`,
-  `published.loadForRoute` and the cookie-based preview keep working. They log one deprecation warning per process.
+- `genga/admin` route components, `genga.admin.*` loaders, `genga.api`, `genga.mcp`, `genga.media.serve`, and
+  `published.loadForRoute` keep working. They log one deprecation warning per process. The same-origin session
+  preview is not deprecated.
 - `genga/render` and `genga/client` keep their own code until 1.0. They do not switch to `@genga-cms/react` based on
   what is installed.
 - `defineBlock({ component })` still works with `RenderBlocks`.
@@ -940,6 +943,13 @@ Risks (check in the first days of the phase that needs them):
 4. **Astro `checkOrigin` on endpoints**, and the order of injected routes against user routes.
 5. **SvelteKit CSRF on JSON writes.** The docs describe form content types. Confirm that admin API writes from the
    same origin pass and cross-origin ones fail.
+6. **Token removal and the refresh level (remote mode).** After `replaceState` removes the token, SvelteKit
+   `refreshAll()` and Nuxt `refreshNuxtData()` re-run loads from the URL without it. Candidate: the adapter keeps
+   the token in a `genga-preview` cookie, as Next does, with the same cross-site cookie risk as item 1.
+7. **Astro route cache and preview URLs.** Confirm that the cache never serves a published page for a URL with
+   `genga-preview` before the page code runs; otherwise the adapter middleware bypasses it.
+8. **Claims not confirmed by the docs:** Hono `c.req.raw`, Astro `context.clientAddress` on endpoints, the Express
+   bridge (`toNodeListener` is ours, so it is tested, not assumed), and the streaming column of section 8.2.
 
 Open questions for the owner:
 

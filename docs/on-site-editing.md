@@ -184,8 +184,8 @@ Acceptance:
 
 - In the four adapter examples, an editor changes a title, a paragraph of rich text, and the order of two blocks on
   the page, then publishes.
-- With the overlay open, a public request of the same URL without a token has no `data-genga-*` attribute and loads
-  no `genga/edit` chunk.
+- With the overlay open, a public request of the same URL (no session, no token) has no `data-genga-*` attribute and
+  loads no `genga/edit` chunk.
 - The keyboard path works end to end (section 7).
 - A conflict between two tabs shows the 409 dialog and loses no data.
 
@@ -301,9 +301,9 @@ per keystroke.
     publish;
   - adapters turn analytics and third-party tags off on preview responses. The remaining assumption is stated: in
     on-site mode, the site code is trusted to the same level as the draft it edits.
-- **No editing code on public responses.** The adapter loads `genga/edit` only after a valid preview token and
-  `genga-edit=1`. Preview responses are `private, no-store`. An e2e test checks a public response for `data-genga-`
-  attributes and for the edit chunk.
+- **No editing code on public responses.** The adapter loads `genga/edit` only after an accepted preview (session or
+  token) and `genga-edit=1`. Preview responses are `private, no-store`. An e2e test checks a public response for
+  `data-genga-` attributes and for the edit chunk.
 - **Messages.** As in the preview bridge: exact target origins, checks of `event.origin` and `event.source`, and the
   document id. The admin treats every `genga:edit` value as untrusted input: it validates it with the field schema,
   and sanitizes rich text, before it enters the draft.
