@@ -348,7 +348,6 @@ components:
             path: { type: string }
         versionId: { type: [string, 'null'] }
         tags: { type: array, items: { type: string } }
-        mediaId: { type: string, description: Media events only. }
     Field:
       type: object
       required: [type]

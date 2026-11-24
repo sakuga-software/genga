@@ -88,9 +88,18 @@ const server = http.createServer(async (req, res) => {
 server.keepAliveTimeout = 65_000;
 server.listen(port, '0.0.0.0', () => console.log(`[genga] Listening on port ${port}.`));
 
+/** Stops the webhook sender and closes the database pool of the Genga instance of the build. */
+async function closeGenga() {
+  try {
+    await (await globalThis.__gengaServer)?.genga.close();
+  } catch (error) {
+    console.error('[genga] Close failed:', error);
+  }
+}
+
 function shutdown(signal) {
   console.log(`[genga] ${signal}: closing.`);
-  server.close(() => process.exit(0));
+  server.close(() => closeGenga().finally(() => process.exit(0)));
   setTimeout(() => process.exit(0), 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

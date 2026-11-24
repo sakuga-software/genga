@@ -27,8 +27,6 @@ export type GengaEvent = {
   versionId: string | null;
   /** The cache tags to invalidate. */
   tags: string[];
-  /** The media id of a media event. */
-  mediaId?: string;
 };
 
 export const ALL_TAG = 'genga';

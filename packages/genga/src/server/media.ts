@@ -209,7 +209,7 @@ export function createMedia(ctx: GengaContext) {
     const { row, events } = await sql.begin(async (tx) => {
       const [row] = await tx<MediaRow[]>`UPDATE genga_media SET alt = ${text} WHERE id = ${id} RETURNING *`;
       if (!row) throw notFound('Média introuvable.');
-      const events = [mediaEvent('media.updated', id, new Date().toISOString())];
+      const events = [mediaEvent('media.updated', new Date().toISOString())];
       await ctx.events.record(tx, events);
       return { row, events };
     });
@@ -246,7 +246,7 @@ export function createMedia(ctx: GengaContext) {
   async function remove(user: PublicUser, id: string) {
     if (!can(user, 'media.delete')) throw forbidden();
     if (!isUuid(id)) throw notFound('Média introuvable.');
-    const deleted = mediaEvent('media.deleted', id, new Date().toISOString());
+    const deleted = mediaEvent('media.deleted', new Date().toISOString());
     const row = await sql.begin(async (tx) => {
       const [row] = await tx<MediaRow[]>`SELECT * FROM genga_media WHERE id = ${id} FOR UPDATE`;
       if (!row) throw notFound('Média introuvable.');
@@ -261,14 +261,18 @@ export function createMedia(ctx: GengaContext) {
         );
       }
       await tx`DELETE FROM genga_media WHERE id = ${id}`;
-      await ctx.events.record(tx, [deleted]);
       for (const key of [row.key, ...(row.sizes ?? []).map((size) => size.key)]) {
         await ctx.storage.delete(key).catch((error) => ctx.log.warn('[genga] Media file delete failed:', error));
       }
+      // The events lock is global: take it after the storage I/O, so that a slow storage never holds back a publish.
+      await ctx.events.record(tx, [deleted]);
       return row;
     });
-    await audit(ctx, user.id, 'media.delete', { detail: { mediaId: id, filename: row.filename } });
-    await ctx.events.dispatch([deleted]);
+    try {
+      await audit(ctx, user.id, 'media.delete', { detail: { mediaId: id, filename: row.filename } });
+    } finally {
+      await ctx.events.dispatch([deleted]);
+    }
   }
 
   /** The metadata of one media item, without an access check. Its files are public too. */

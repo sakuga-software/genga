@@ -34,7 +34,8 @@ slug stays private.
 }
 ```
 
-Media events have `collection`, `documentId`, `slug` and `path` at `null`, and a `mediaId`.
+Media events have `collection`, `documentId`, `slug` and `path` at `null`. They do not name the
+media item: the events endpoint is public, and the item can be in drafts only.
 
 ## Cache tags
 
@@ -89,12 +90,19 @@ GENGA_WEBHOOKS='[{"url":"https://www.example.com/api/genga/webhook","secret":"wh
   `webhook-timestamp` (seconds, new at each attempt) and
   `webhook-signature: v1,<base64 HMAC-SHA256 of id.timestamp.body>`.
 - **Outbox.** The transaction of the change also writes the event to the `genga_events`
-  table. A sender in the Genga process delivers from it, so a restart loses nothing.
+  table. A sender in the Genga process delivers from it, so a restart loses nothing. The
+  transactions that write events take one advisory lock, so that the order of the events is
+  the order of the commits. Two publishes therefore commit one after the other.
 - **Retries.** A `2xx` answer is a success. Other answers, a redirect, a timeout (10 s) or a
-  network error schedule a retry after about 5 s, 5 min, 30 min, 2 h, 5 h, 10 h, then 14 h,
-  and stop 24 hours after the event. `Retry-After` is respected. `410 Gone` stops at once.
-- **At least once.** A receiver can get one event twice. Ignore a `webhook-id` that you
-  already handled.
+  network error schedule a retry after about 5 s, 5 min, 30 min, 2 h, 5 h and 10 h, then a
+  last attempt 24 hours after the event. `Retry-After` is respected within these 24 hours.
+  `410 Gone` stops at once.
+- **At least once, in any order.** A receiver can get one event twice, and a retry can come
+  after a newer event. Ignore a `webhook-id` that you already handled. The tags make the order
+  unimportant: an invalidation is the same in any order.
+- **One sender per URL list.** A Genga process delivers only to the URLs of its own
+  `webhooks` option. In a rolling deploy, a delivery for a new URL waits for a process that
+  knows it.
 
 ### Receive a webhook
 
@@ -135,5 +143,5 @@ curl 'https://cms.example.com/api/v1/events?after=0b8a5c1e-3f9d-4d2a-8f7b-2a6c1e
 - An `after` that is unknown or older than 7 days answers `410` with `cursor_expired`.
   Invalidate the tag `genga`, then read again without `after`.
 
-Genga deletes events after 8 days. Keep a safety TTL on your caches (one hour, for example),
+Genga deletes events after 8 days, with or without webhooks. Keep a safety TTL on your caches (one hour, for example),
 never "forever".

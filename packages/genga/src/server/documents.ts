@@ -381,12 +381,15 @@ export function createDocuments(ctx: GengaContext) {
     });
     const { events, ...published } = result;
     ctx.cache.invalidate(published.collection);
-    await audit(ctx, user.id, 'document.publish', {
-      collection: published.collection,
-      documentId: id,
-      detail: { versionId: published.versionId, previousSlug: published.previousSlug },
-    });
-    await ctx.events.dispatch(events);
+    try {
+      await audit(ctx, user.id, 'document.publish', {
+        collection: published.collection,
+        documentId: id,
+        detail: { versionId: published.versionId, previousSlug: published.previousSlug },
+      });
+    } finally {
+      await ctx.events.dispatch(events);
+    }
     return { ...published, status: 'published' as DocumentStatus };
   }
 
@@ -423,11 +426,14 @@ export function createDocuments(ctx: GengaContext) {
       return { row, events };
     });
     ctx.cache.invalidate(row.collection);
-    await audit(ctx, user.id, remove ? 'document.delete' : 'document.unpublish', {
-      collection: row.collection,
-      documentId: id,
-    });
-    await ctx.events.dispatch(events);
+    try {
+      await audit(ctx, user.id, remove ? 'document.delete' : 'document.unpublish', {
+        collection: row.collection,
+        documentId: id,
+      });
+    } finally {
+      await ctx.events.dispatch(events);
+    }
   }
 
   async function unpublish(user: PublicUser, id: string) {

@@ -48,8 +48,8 @@ const PRUNE_EVERY_MS = 60 * 60_000;
 const BATCH = 20;
 const LEASE_MS = 60_000;
 const MAX_ERROR_LENGTH = 300;
-/** Delays after the first, second, … failed attempt. Then every 14 hours, until 24 hours after the event. */
-const RETRY_DELAYS_MS = [5_000, 5 * 60_000, 30 * 60_000, 2 * 3_600_000, 5 * 3_600_000, 10 * 3_600_000, 14 * 3_600_000];
+/** Delays after the first, second, … failed attempt. The last attempt is 24 hours after the event. */
+const RETRY_DELAYS_MS = [5_000, 5 * 60_000, 30 * 60_000, 2 * 3_600_000, 5 * 3_600_000, 10 * 3_600_000];
 // Any constant works: all Genga processes must use the same one. It differs from the migration lock.
 const EVENTS_LOCK_ID = 7_310_442_119;
 
@@ -83,7 +83,8 @@ export function documentEvent(
   };
 }
 
-export function mediaEvent(type: 'media.updated' | 'media.deleted', mediaId: string, at: string): GengaEvent {
+/** A media event. It names no media: the events endpoint is public, and a media item can be in drafts only. */
+export function mediaEvent(type: 'media.updated' | 'media.deleted', at: string): GengaEvent {
   return {
     id: crypto.randomUUID(),
     type,
@@ -95,7 +96,6 @@ export function mediaEvent(type: 'media.updated' | 'media.deleted', mediaId: str
     previous: null,
     versionId: null,
     tags: [ALL_TAG],
-    mediaId,
   };
 }
 
@@ -136,13 +136,13 @@ function wants(hook: WebhookConfig, type: GengaEventType) {
   return (hook.events ?? ['*']).some((item) => item === '*' || item === type);
 }
 
-function retryAfterMs(response: Response): number {
+function retryAfterMs(response: Response, now: number): number {
   const value = response.headers.get('retry-after');
   if (!value) return 0;
   const seconds = Number(value);
   if (Number.isFinite(seconds)) return Math.max(0, seconds) * 1000;
   const date = Date.parse(value);
-  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : 0;
+  return Number.isFinite(date) ? Math.max(0, date - now) : 0;
 }
 
 type ClaimedRow = { event_seq: string; url: string; attempts: number; id: string; at: Date; event: GengaEvent };
@@ -207,6 +207,9 @@ export function createEventBus(
     if (events.length) wake();
   }
 
+  const urls = webhooks.map((hook) => hook.url);
+
+  /** Claims the due deliveries of the configured URLs. Another process can own other URLs. */
   async function claim(): Promise<ClaimedRow[]> {
     const at = new Date(now());
     return sql<ClaimedRow[]>`
@@ -215,7 +218,7 @@ export function createEventBus(
       FROM genga_events e
       WHERE e.seq = d.event_seq AND (d.event_seq, d.url) IN (
         SELECT event_seq, url FROM genga_webhook_deliveries
-        WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= ${at}
+        WHERE delivered_at IS NULL AND failed_at IS NULL AND next_attempt_at <= ${at} AND url = ANY(${urls}::text[])
         ORDER BY event_seq LIMIT ${BATCH}
         FOR UPDATE SKIP LOCKED
       )
@@ -232,10 +235,11 @@ export function createEventBus(
         WHERE ${key}`;
       return;
     }
+    const deadline = row.at.getTime() + DELIVERY_WINDOW_MS;
     const base = RETRY_DELAYS_MS[Math.min(row.attempts, RETRY_DELAYS_MS.length) - 1];
     const jitter = 0.9 + Math.random() * 0.2;
-    const next = at + Math.max(Math.round(base * jitter), result.retryAfter);
-    const gone = result.status === 410 || next > row.at.getTime() + DELIVERY_WINDOW_MS;
+    const next = Math.min(at + Math.max(Math.round(base * jitter), result.retryAfter), deadline);
+    const gone = result.status === 410 || at >= deadline;
     const error = result.error?.slice(0, MAX_ERROR_LENGTH) ?? null;
     if (gone) {
       log.warn(`[genga] Webhook delivery of event ${row.id} stopped after ${row.attempts} attempts.`);
@@ -252,13 +256,7 @@ export function createEventBus(
   }
 
   async function deliver(row: ClaimedRow) {
-    const hook = webhooks.find((item) => item.url === row.url);
-    if (!hook) {
-      await sql`
-        UPDATE genga_webhook_deliveries SET failed_at = ${new Date(now())}, last_error = 'The webhook is not configured.'
-        WHERE event_seq = ${row.event_seq} AND url = ${row.url}`;
-      return;
-    }
+    const hook = webhooks.find((item) => item.url === row.url) as WebhookConfig;
     const body = JSON.stringify(row.event);
     try {
       const headers = await webhookHeaders(hook.secret, row.id, body, Math.floor(now() / 1000));
@@ -270,7 +268,7 @@ export function createEventBus(
         signal: AbortSignal.timeout(delivery.timeoutMs ?? 10_000),
       });
       await response.body?.cancel().catch(() => {});
-      await finish(row, { status: response.status, error: null, retryAfter: retryAfterMs(response) });
+      await finish(row, { status: response.status, error: null, retryAfter: retryAfterMs(response, now()) });
     } catch (error) {
       await finish(row, { status: null, error: error instanceof Error ? error.message : String(error), retryAfter: 0 });
     }
@@ -284,17 +282,19 @@ export function createEventBus(
 
   async function drainOnce() {
     await prune();
-    for (;;) {
+    while (urls.length && !stopped) {
       const rows = await claim();
       if (!rows.length) return;
-      await Promise.all(rows.map(deliver));
+      for (const result of await Promise.allSettled(rows.map(deliver))) {
+        if (result.status === 'rejected') log.error('[genga] A webhook delivery failed:', result.reason);
+      }
       if (rows.length < BATCH) return;
     }
   }
 
   /**
-   * Sends the due webhook deliveries and waits for them. The sender also runs it every
-   * `pollMs` and after each change.
+   * Deletes the events older than 8 days, then sends the due webhook deliveries and waits for
+   * them. The sender also runs it on a timer and after each change.
    */
   function drain(): Promise<void> {
     if (running) {
@@ -315,7 +315,7 @@ export function createEventBus(
   }
 
   function wake() {
-    if (webhooks.length && !stopped) void drain();
+    if (!stopped) void drain();
   }
 
   return {
@@ -324,8 +324,8 @@ export function createEventBus(
     dispatch,
     drain,
     start() {
-      if (!webhooks.length || timer || stopped) return;
-      timer = setInterval(wake, delivery.pollMs ?? 5_000);
+      if (timer || stopped) return;
+      timer = setInterval(wake, urls.length ? (delivery.pollMs ?? 5_000) : PRUNE_EVERY_MS);
       timer.unref?.();
       wake();
     },

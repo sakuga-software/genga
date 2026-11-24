@@ -20,8 +20,9 @@ All notable changes to the `genga` package. The format follows
   set.
 - Public API: the `301` of a renamed slug also gives `path`, the site path of the new slug.
 - Publish events: `document.published`, `document.unpublished`, `document.deleted`,
-  `document.slug_changed`, `media.updated` and `media.deleted`, each with the cache tags
-  `genga`, `genga:c:<collection>` and `genga:d:<collection>:<slug>`. `genga.events.on()` runs
+  `document.slug_changed`, `media.updated` and `media.deleted`, with the cache tags to
+  invalidate: `genga:c:<collection>` and `genga:d:<collection>:<slug>` for a document, `genga`
+  for a media item. `genga.events.on()` runs
   listeners after the commit. `tagsFor()` gives the same tags to reads. See `docs/events.md`.
 - Signed webhooks in the Standard Webhooks format (`webhooks` option, `GENGA_WEBHOOKS` on the
   server image), from an outbox table with retries and backoff for 24 hours. Migration

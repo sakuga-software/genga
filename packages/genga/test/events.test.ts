@@ -55,6 +55,14 @@ describe('webhook signatures', () => {
       [webhookRequest(body.replace('published', 'deleted'), headers), SECRET],
       [webhookRequest(body, headers), OTHER_SECRET],
       [webhookRequest(body, { ...headers, 'webhook-id': 'another-id' }), SECRET],
+      [
+        webhookRequest(body, {
+          'webhook-id': 'another-id',
+          'webhook-timestamp': timestamp,
+          'webhook-signature': referenceSignature(SECRET, 'another-id', timestamp, body),
+        }),
+        SECRET,
+      ],
       [webhookRequest(body, { 'webhook-id': id, 'webhook-timestamp': timestamp }), SECRET],
       [webhookRequest(body, { ...headers, 'webhook-signature': signature.replace('v1,', 'v2,') }), SECRET],
     ];
@@ -208,7 +216,8 @@ describe('publish events', () => {
     await genga.media.remove(user, media.id);
     const rows = await outbox();
     expect(rows.map((row) => row.type)).toEqual(['media.updated', 'media.deleted']);
-    expect(rows[0].event).toMatchObject({ mediaId: media.id, tags: ['genga'], collection: null });
+    expect(rows[0].event).toMatchObject({ tags: ['genga'], collection: null, documentId: null });
+    expect(JSON.stringify(rows)).not.toContain(media.id);
     expect(tagsFor('journal', 'x')).toContain(rows[0].event.tags[0]);
   });
 
@@ -268,17 +277,24 @@ describe('publish events', () => {
     expect(done.delivered_at).toBeInstanceOf(Date);
   });
 
-  it('stops after 24 hours, and at once on 410', async () => {
+  it('makes a last attempt 24 hours after the event, then stops, and stops at once on 410', async () => {
     reply = () => {
       throw new Error('connection refused');
     };
     await publishNew('Never received');
+    const [{ at }] = await genga.sql<{ at: Date }[]>`SELECT at FROM genga_events`;
     await genga.deliverWebhooks();
     const [first] = await genga.sql`SELECT last_error, failed_at FROM genga_webhook_deliveries`;
     expect(first).toMatchObject({ last_error: 'connection refused', failed_at: null });
-    clock += 25 * 3_600_000;
+    clock = at.getTime() + 24 * 3_600_000 - 60_000;
     await genga.deliverWebhooks();
-    const [stopped] = await genga.sql`SELECT failed_at FROM genga_webhook_deliveries`;
+    const [last] = await genga.sql`SELECT next_attempt_at, failed_at FROM genga_webhook_deliveries`;
+    expect(last.failed_at).toBeNull();
+    expect(last.next_attempt_at.getTime()).toBe(at.getTime() + 24 * 3_600_000);
+    clock = at.getTime() + 24 * 3_600_000;
+    await genga.deliverWebhooks();
+    const [stopped] = await genga.sql`SELECT attempts, failed_at FROM genga_webhook_deliveries`;
+    expect(stopped.attempts).toBe(3);
     expect(stopped.failed_at).toBeInstanceOf(Date);
 
     reply = () => new Response(null, { status: 410 });
@@ -288,6 +304,44 @@ describe('publish events', () => {
     const [gone] = await genga.sql`SELECT attempts, failed_at, last_status FROM genga_webhook_deliveries`;
     expect(gone).toMatchObject({ attempts: 1, last_status: 410 });
     expect(gone.failed_at).toBeInstanceOf(Date);
+  });
+
+  it('waits for Retry-After, from the clock of the sender', async () => {
+    reply = () => new Response(null, { status: 429, headers: { 'Retry-After': '3600' } });
+    await publishNew('Slow down');
+    await genga.deliverWebhooks();
+    const [row] = await genga.sql`SELECT next_attempt_at, last_status FROM genga_webhook_deliveries`;
+    expect(row.last_status).toBe(429);
+    expect(row.next_attempt_at.getTime() - clock).toBeGreaterThanOrEqual(3_600_000);
+  });
+
+  it('leaves the deliveries of a URL that another process configures', async () => {
+    await genga.sql`
+      INSERT INTO genga_events (id, type, at, event) VALUES (${crypto.randomUUID()}, 'media.updated', now(), '{}')
+    `;
+    await genga.sql`
+      INSERT INTO genga_webhook_deliveries (event_seq, url, next_attempt_at)
+      SELECT seq, 'https://other.example/hook', now() - interval '1 minute' FROM genga_events
+    `;
+    await genga.deliverWebhooks();
+    expect(calls).toEqual([]);
+    const [row] = await genga.sql`SELECT attempts, failed_at FROM genga_webhook_deliveries`;
+    expect(row).toMatchObject({ attempts: 0, failed_at: null });
+  });
+
+  it('deletes events after 8 days, also without webhooks', async () => {
+    genga = start({ webhooks: [] });
+    await genga.ready();
+    await genga.sql`
+      INSERT INTO genga_events (id, type, at, event)
+      VALUES (${crypto.randomUUID()}, 'media.updated', ${new Date(clock - 9 * 86_400_000)}, '{}'),
+        (${crypto.randomUUID()}, 'media.updated', ${new Date(clock - 6 * 86_400_000)}, '{}')
+    `;
+    // The first prune ran at start. The next one waits an hour.
+    clock += 2 * 3_600_000;
+    await genga.deliverWebhooks();
+    const [{ count }] = await genga.sql<{ count: number }[]>`SELECT count(*)::int AS count FROM genga_events`;
+    expect(count).toBe(1);
   });
 
   it('keeps undelivered events across a restart', async () => {
