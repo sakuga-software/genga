@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Header, Kbd, Menu, MenuItem, MenuSection, Modal, SearchField } from '@heroui/react';
-import { FilePlus, FileText, Image, LayoutDashboard, Users } from 'lucide-react';
+import { FilePlus, FileText, Image, KeyRound, LayoutDashboard, Users } from 'lucide-react';
 import { Autocomplete, useFilter, type Key } from 'react-aria-components';
 import { useNavigate } from 'react-router';
 import { apiRequest } from '../../client/api';
@@ -81,6 +81,7 @@ export function CommandPalette({ isOpen, onOpenChange, collections, canManageUse
     ...(canManageUsers
       ? [{ id: `go:${adminPath()}/users`, label: 'Utilisateurs', icon: <Users aria-hidden className={ICON} /> }]
       : []),
+    { id: `go:${adminPath()}/tokens`, label: 'Jetons d’accès', icon: <KeyRound aria-hidden className={ICON} /> },
   ];
   const creates: Command[] = collections
     .filter((collection) => collection.canCreate)

@@ -1,11 +1,13 @@
 import postgres from 'postgres';
 import { blockSchemas, type GengaConfig } from '../config';
 import { createAdmin } from './admin';
+import { createApiTokens } from './api-tokens';
 import { createApi } from './api';
 import { createAuth } from './auth';
 import { PublishedCache } from './cache';
 import type { GengaContext, GengaLogger } from './context';
 import { createDocuments } from './documents';
+import { createMcp, type McpOptions } from './mcp';
 import { createMedia } from './media';
 import { runMigrations } from '../../migrations/migrate.mjs';
 import { originOf } from './origin';
@@ -55,6 +57,8 @@ export type GengaOptions = {
    */
   trustedProxies?: number;
   logger?: GengaLogger;
+  /** Options of the MCP endpoint (`genga.mcp`). */
+  mcp?: McpOptions;
 };
 
 /** Reads a comma-separated list of origins. Throws on a value that is not an origin. */
@@ -109,7 +113,8 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   const media = createMedia(ctx);
   const users = createUsers(ctx, auth);
   const published = createPublished(ctx, auth);
-  const services = { ctx, auth, documents, media, users };
+  const tokens = createApiTokens(ctx);
+  const services = { ctx, auth, documents, media, users, tokens };
 
   let ready: Promise<void> | null = null;
 
@@ -123,8 +128,14 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     media,
     users,
     published,
+    tokens,
     admin: createAdmin(services),
     api: createApi(services),
+    /**
+     * The MCP endpoint, a fetch-style handler. Route POST, GET and DELETE of one path to it,
+     * for example `/mcp`. Clients send `Authorization: Bearer gga_…`.
+     */
+    mcp: createMcp(services, options.mcp),
     /** Runs the migrations once, then logs a setup URL if no user exists. */
     ready(): Promise<void> {
       ready ??= (async () => {
@@ -166,4 +177,8 @@ export {
   type PreviewTarget,
 } from './preview';
 export { ADMIN_HEADERS } from './api';
+export { API_TOKEN_PREFIX, type TokenAuth } from './api-tokens';
+export { withAuditSource, type AuditSource } from './auth';
+export type { McpOptions } from './mcp';
+export { fetchRemoteFile, isPublicAddress, type RemoteFetchOptions } from './remote-fetch';
 export { MEDIA_KEY_PATTERN, ALLOWED_MIME } from './media';

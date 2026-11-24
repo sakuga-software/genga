@@ -77,6 +77,8 @@ Reads tolerate old JSONB: unknown keys are ignored, missing keys take their defa
 - `genga_tokens`: one-time setup, invite and password links (hashed)
 - `genga_redirects(collection, from_slug, to_slug)`
 - `genga_audit(id, at, user_id, action, collection, document_id, detail)`
+- `genga_api_tokens(id, user_id, name, token_hash, scopes, created_at, last_used_at, expires_at, revoked_at)`:
+  personal access tokens of the [MCP endpoint](./mcp.md) (hashed)
 
 `findPublished(collection, slug)` reads the version that `published_version_id` points to.
 The site never reads `draft` outside preview mode.

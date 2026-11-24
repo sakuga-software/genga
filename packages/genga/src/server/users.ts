@@ -79,7 +79,10 @@ export function createUsers(ctx: GengaContext, auth: GengaAuth) {
       if (input.role !== undefined) await tx`UPDATE genga_users SET role = ${input.role as string} WHERE id = ${id}`;
       if (typeof input.disabled === 'boolean') {
         await tx`UPDATE genga_users SET disabled_at = ${input.disabled ? tx`now()` : null} WHERE id = ${id}`;
-        if (input.disabled) await tx`DELETE FROM genga_sessions WHERE user_id = ${id}`;
+        if (input.disabled) {
+          await tx`DELETE FROM genga_sessions WHERE user_id = ${id}`;
+          await tx`UPDATE genga_api_tokens SET revoked_at = now() WHERE user_id = ${id} AND revoked_at IS NULL`;
+        }
       }
       const [updated] = await tx<Parameters<typeof toPublicUser>[0][]>`
         SELECT id, email, name, role, created_at, disabled_at FROM genga_users WHERE id = ${id}

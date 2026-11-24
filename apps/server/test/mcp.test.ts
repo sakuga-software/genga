@@ -1,0 +1,163 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { createGenga, type Genga } from 'genga/server';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parseConfig } from '../app/.server/config-file';
+import { handleMcpRequest } from '../app/.server/mcp';
+import { createPublicApi } from '../app/.server/public-api';
+import type { Settings } from '../app/.server/settings';
+import { TEST_URL } from './global-setup';
+
+const config = parseConfig({
+  collections: {
+    posts: {
+      label: 'Posts',
+      path: '/blog/{slug}',
+      fields: {
+        title: { type: 'text', required: true },
+        slug: { type: 'slug', from: 'title' },
+        body: { type: 'blocks' },
+      },
+    },
+  },
+  blocks: [{ type: 'text', label: 'Text', fields: { content: { type: 'richText' } } }],
+});
+
+let genga: Genga;
+let mediaDir: string;
+let server: http.Server;
+let baseUrl: string;
+let settings: Pick<Settings, 'mcp'> = { mcp: { enabled: true, path: '/agents' } };
+
+/** A plain Node server in front of the handlers of apps/server, as `server.mjs` does. */
+async function toRequest(req: http.IncomingMessage): Promise<Request> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (typeof value === 'string') headers.set(name, value);
+  }
+  headers.set('x-forwarded-for', req.socket.remoteAddress ?? 'unknown');
+  const method = req.method ?? 'GET';
+  return new Request(new URL(req.url ?? '/', baseUrl), {
+    method,
+    headers,
+    body: method === 'GET' || method === 'HEAD' ? undefined : Buffer.concat(chunks),
+  });
+}
+
+beforeAll(async () => {
+  mediaDir = await mkdtemp(path.join(tmpdir(), 'genga-server-mcp-'));
+  server = http.createServer(async (req, res) => {
+    const request = await toRequest(req);
+    const publicApi = createPublicApi({
+      genga,
+      publicUrl: baseUrl,
+      corsOrigins: [],
+      previewOrigins: [],
+      previewSecret: null,
+      rateLimit: 1000,
+      trustedProxies: 1,
+    });
+    const response =
+      (await handleMcpRequest(request, { genga, settings })) ??
+      (new URL(request.url).pathname.startsWith('/api/v1/')
+        ? await publicApi(request)
+        : new Response('Not found', { status: 404 }));
+    res.writeHead(response.status, Object.fromEntries(response.headers));
+    res.end(Buffer.from(await response.arrayBuffer()));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  genga = createGenga(config, {
+    databaseUrl: TEST_URL,
+    siteUrl: baseUrl,
+    siteLink: 'https://www.example.com',
+    mediaDir,
+    secureCookies: false,
+    logger: { info: () => {}, warn: () => {}, error: console.error },
+  });
+  await genga.ready();
+  await genga.sql`TRUNCATE genga_audit, genga_api_tokens, genga_documents, genga_users CASCADE`;
+});
+
+afterAll(async () => {
+  await new Promise((resolve) => server.close(resolve));
+  await genga.close();
+  await rm(mediaDir, { recursive: true, force: true });
+});
+
+describe('MCP endpoint of the headless server', () => {
+  it('drafts, publishes and serves a document over Streamable HTTP with the MCP SDK client', async () => {
+    const { user } = await genga.auth.invite('mcp-editor@genga.test', 'Editor', 'editor');
+    const { token } = await genga.tokens.create(user, { name: 'e2e', scopes: ['read', 'write', 'publish'] });
+    const client = new Client({ name: 'genga-e2e', version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`${baseUrl}/agents`), {
+        requestInit: { headers: { authorization: `Bearer ${token}` } },
+      }),
+    );
+    try {
+      const { tools } = await client.listTools();
+      expect(tools.length).toBe(13);
+
+      const created = (await client.callTool({
+        name: 'create_document',
+        arguments: {
+          collection: 'posts',
+          data: {
+            title: 'Hello from MCP',
+            body: [
+              {
+                _type: 'text',
+                content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hi' }] }] },
+              },
+            ],
+          },
+        },
+      })) as CallToolResult;
+      expect(created.isError).toBeFalsy();
+      const { id, draftRev } = created.structuredContent as { id: string; draftRev: number };
+
+      const published = (await client.callTool({
+        name: 'publish_document',
+        arguments: { id, draftRev },
+      })) as CallToolResult;
+      expect(published.isError).toBeFalsy();
+      expect(published.structuredContent?.url).toBe('https://www.example.com/blog/hello-from-mcp');
+
+      const response = await fetch(`${baseUrl}/api/v1/collections/posts/documents/hello-from-mcp`);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { document: { id: string; data: { title: string } } };
+      expect(body.document).toMatchObject({ id, data: { title: 'Hello from MCP' } });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('answers 401 without a token, and leaves other paths to the router', async () => {
+    const response = await fetch(`${baseUrl}/agents`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toBe('Bearer realm="genga"');
+    expect((await fetch(`${baseUrl}/mcp`, { method: 'POST' })).status).toBe(404);
+  });
+
+  it('is off with GENGA_MCP=off', async () => {
+    settings = { mcp: { enabled: false, path: '/agents' } };
+    try {
+      expect((await fetch(`${baseUrl}/agents`, { method: 'POST' })).status).toBe(404);
+    } finally {
+      settings = { mcp: { enabled: true, path: '/agents' } };
+    }
+  });
+});

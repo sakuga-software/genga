@@ -30,6 +30,8 @@ type DocumentRow = {
 export type ListOptions = {
   search?: string;
   status?: DocumentStatus | 'all';
+  /** Documents whose draft has this value in one of its `tags` fields. */
+  tag?: string;
   limit?: number;
   offset?: number;
 };
@@ -51,9 +53,8 @@ export function createDocuments(ctx: GengaContext) {
   const { sql } = ctx;
 
   function collectionOf(name: string): CollectionConfig {
-    const collection = ctx.config.collections[name];
-    if (!collection) throw notFound(`Collection inconnue : ${name}`);
-    return collection;
+    if (!Object.hasOwn(ctx.config.collections, name)) throw notFound(`Collection inconnue : ${name}`);
+    return ctx.config.collections[name];
   }
 
   function assertCan(
@@ -104,22 +105,35 @@ export function createDocuments(ctx: GengaContext) {
     return slug;
   }
 
+  function tagCondition(name: string, collection: CollectionConfig, tag: string) {
+    const fields = Object.entries(collection.fields)
+      .filter(([, field]) => field.type === 'tags')
+      .map(([field]) => field);
+    if (!fields.length) throw badRequest(`La collection ${name} n'a pas de champ tags.`);
+    const value = sql.json([tag] as never);
+    return fields
+      .map((field) => sql`d.draft->(${field}::text) @> ${value}`)
+      .reduce((left, right) => sql`${left} OR ${right}`);
+  }
+
   async function list(user: PublicUser, collectionName: string, options: ListOptions = {}): Promise<DocumentSummary[]> {
     const collection = collectionOf(collectionName);
     assertCan(user, 'read', undefined, collectionName);
     const ownOnly = isOwnOnly(user, collection.access);
     const search = options.search?.trim() ? `%${escapeLike(options.search.trim())}%` : null;
     const status = options.status ?? 'all';
+    const tagFilter = options.tag === undefined ? null : tagCondition(collectionName, collection, options.tag);
     const rows = await sql<DocumentRow[]>`
       SELECT d.*, u.name AS author_name FROM genga_documents d
       LEFT JOIN genga_users u ON u.id = d.created_by
       WHERE d.collection = ${collectionName} AND d.deleted_at IS NULL
       ${ownOnly ? sql`AND d.created_by = ${user.id}` : sql``}
       ${search ? sql`AND (d.draft->>${collection.titleField} ILIKE ${search} OR d.slug ILIKE ${search})` : sql``}
+      ${tagFilter ? sql`AND (${tagFilter})` : sql``}
       ${status === 'draft' ? sql`AND d.published_version_id IS NULL` : sql``}
       ${status === 'published' ? sql`AND d.published_version_id IS NOT NULL AND d.published_rev = d.draft_rev` : sql``}
       ${status === 'changed' ? sql`AND d.published_version_id IS NOT NULL AND d.published_rev <> d.draft_rev` : sql``}
-      ORDER BY d.draft_updated_at DESC
+      ORDER BY d.draft_updated_at DESC, d.id
       LIMIT ${Math.min(options.limit ?? 100, 500)} OFFSET ${options.offset ?? 0}
     `;
     return rows.map(summarize);
@@ -159,6 +173,38 @@ export function createDocuments(ctx: GengaContext) {
       media: Object.fromEntries(media),
       canPublish: can(user, 'publish', collection.access, { createdBy: row.created_by }),
       canDelete: can(user, 'delete', collection.access, { createdBy: row.created_by }),
+    };
+  }
+
+  /** The id of the live document with this slug, if the user can read it. */
+  async function findBySlug(user: PublicUser, collectionName: string, slug: string): Promise<string> {
+    collectionOf(collectionName);
+    const [row] = await sql<Pick<DocumentRow, 'id' | 'collection' | 'created_by'>[]>`
+      SELECT id, collection, created_by FROM genga_documents
+      WHERE collection = ${collectionName} AND slug = ${slug} AND deleted_at IS NULL
+    `;
+    // A document that the user cannot read is not found: its slug stays private.
+    if (!row || !can(user, 'read', collectionOf(row.collection).access, { createdBy: row.created_by })) {
+      throw notFound('Document introuvable.');
+    }
+    return row.id;
+  }
+
+  /** The data of the published version, without media objects, or null when the document is not live. */
+  async function publishedData(user: PublicUser, id: string) {
+    const row = await findRow(id);
+    assertCan(user, 'read', row);
+    if (!row.published_version_id) return null;
+    const [version] = await sql<{ id: string; slug: string; data: Record<string, unknown>; created_at: Date }[]>`
+      SELECT id, slug, data, created_at FROM genga_versions WHERE id = ${row.published_version_id}
+    `;
+    if (!version) return null;
+    const collection = collectionOf(row.collection);
+    return {
+      versionId: version.id,
+      slug: version.slug,
+      publishedAt: row.published_at?.toISOString() ?? version.created_at.toISOString(),
+      data: tolerantRead(collection.fields, version.data, ctx.blocks),
     };
   }
 
@@ -434,6 +480,8 @@ export function createDocuments(ctx: GengaContext) {
     list,
     counts,
     get,
+    findBySlug,
+    publishedData,
     create,
     saveDraft,
     publish,

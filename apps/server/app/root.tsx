@@ -1,5 +1,12 @@
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
+import { getServer } from './.server/genga';
+import { handleMcpRequest } from './.server/mcp';
 import type { Route } from './+types/root';
+
+/** The MCP endpoint answers before the routes: its path is a setting (GENGA_MCP_PATH). */
+export const middleware: Route.MiddlewareFunction[] = [
+  async ({ request }, next) => (await handleMcpRequest(request, await getServer())) ?? next(),
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

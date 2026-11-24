@@ -18,6 +18,7 @@ export default [
       route('collections/:collection/:id', 'routes/admin/document.tsx'),
       route('media', 'routes/admin/media.tsx'),
       route('users', 'routes/admin/users.tsx'),
+      route('tokens', 'routes/admin/tokens.tsx'),
     ]),
   ]),
 ] satisfies RouteConfig;

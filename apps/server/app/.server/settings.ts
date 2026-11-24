@@ -22,6 +22,8 @@ export type Settings = {
   port: number;
   /** Requests per minute and per client address on the public API. */
   rateLimit: number;
+  /** The MCP endpoint: on by default at `/mcp`. */
+  mcp: { enabled: boolean; path: string };
 };
 
 export class SettingsError extends Error {
@@ -107,6 +109,19 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     problems.push(`GENGA_SECRET must have at least ${MIN_SECRET_LENGTH} characters. Try: openssl rand -base64 48`);
   }
 
+  const mcpSwitch = env.GENGA_MCP?.trim().toLowerCase() || 'on';
+  if (!['on', 'off', 'true', 'false', '1', '0'].includes(mcpSwitch)) {
+    problems.push(`GENGA_MCP must be on or off, not "${env.GENGA_MCP}".`);
+  }
+  const mcpPath = (env.GENGA_MCP_PATH?.trim() || '/mcp').replace(/\/+$/, '');
+  if (!/^\/[a-z0-9_-]+$/i.test(mcpPath)) {
+    problems.push(`GENGA_MCP_PATH must be one path segment like /mcp, not "${env.GENGA_MCP_PATH}".`);
+  } else if (RESERVED_SEGMENTS.has(mcpPath.slice(1).toLowerCase())) {
+    problems.push(`GENGA_MCP_PATH cannot be ${mcpPath}: the server uses this path.`);
+  } else if (mcpPath.toLowerCase() === adminPath.toLowerCase()) {
+    problems.push(`GENGA_MCP_PATH cannot be the admin path ${adminPath}.`);
+  }
+
   const settings: Settings = {
     databaseUrl,
     configPath,
@@ -122,6 +137,7 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     secret,
     port,
     rateLimit: integer(env.GENGA_RATE_LIMIT, 300, 'GENGA_RATE_LIMIT', problems, 1),
+    mcp: { enabled: !['off', 'false', '0'].includes(mcpSwitch), path: mcpPath },
   };
   if (problems.length) throw new SettingsError(problems);
   return settings;

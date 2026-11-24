@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import type { Sql, TransactionSql } from 'postgres';
 import { isRole, type Role } from '../access';
@@ -372,15 +373,26 @@ export function createAuth(ctx: GengaContext) {
 
 export type GengaAuth = ReturnType<typeof createAuth>;
 
+/** Where a write comes from, for example `{ via: 'mcp', tokenId }`. */
+export type AuditSource = { via: string; tokenId?: string };
+
+const auditSource = new AsyncLocalStorage<AuditSource>();
+
+/** Runs `task`, and adds `source` to the detail of each audit entry that it writes. */
+export function withAuditSource<T>(source: AuditSource, task: () => Promise<T>): Promise<T> {
+  return auditSource.run(source, task);
+}
+
 export async function audit(
   ctx: GengaContext,
   userId: string | null,
   action: string,
   target: { collection?: string; documentId?: string; detail?: Record<string, unknown> } = {},
 ) {
+  const detail = { ...target.detail, ...auditSource.getStore() };
   await ctx.sql`
     INSERT INTO genga_audit (user_id, action, collection, document_id, detail)
     VALUES (${userId}, ${action}, ${target.collection ?? null}, ${target.documentId ?? null},
-      ${ctx.sql.json((target.detail ?? {}) as never)})
+      ${ctx.sql.json(detail as never)})
   `;
 }
