@@ -1,13 +1,11 @@
 import { createGenga, type Genga } from 'genga/server';
 import { data } from 'react-router';
 import { loadConfigFile } from './config-file';
-import { createPublicApi } from './public-api';
 import { readSettings, SettingsError, type Settings } from './settings';
 
 export type GengaServer = {
   settings: Settings;
   genga: Genga;
-  publicApi: ReturnType<typeof createPublicApi>;
 };
 
 function startGenga(...args: Parameters<typeof createGenga>): Genga {
@@ -39,18 +37,11 @@ async function boot(): Promise<GengaServer> {
     adminEmail: settings.adminEmail,
     secureCookies: settings.publicUrl.startsWith('https:'),
     trustedProxies,
-  });
-  const publicApi = createPublicApi({
-    genga,
-    publicUrl: settings.publicUrl,
-    corsOrigins: settings.corsOrigins,
-    previewOrigins: settings.previewOrigins,
-    previewSecret: settings.secret,
-    rateLimit: settings.rateLimit,
-    trustedProxies,
+    publicApi: { corsOrigins: settings.corsOrigins, rateLimit: settings.rateLimit },
+    mcp: settings.mcp.enabled ? { path: settings.mcp.path } : false,
   });
   genga.ready().catch((error) => console.error('[genga] Start failed:', error));
-  return { settings, genga, publicApi };
+  return { settings, genga };
 }
 
 const store = globalThis as typeof globalThis & { __gengaServer?: Promise<GengaServer> };
@@ -76,4 +67,13 @@ export async function requireAdmin(params: { admin?: string }): Promise<Genga> {
     throw data({ message: 'Le CMS ne joint pas sa base de données.' }, { status: 503 });
   }
   return genga;
+}
+
+/**
+ * For the resource routes of the Genga paths. The root middleware answers them first; these
+ * routes give React Router a match, so it does not render its 404 page.
+ */
+export async function handleOrNotFound(request: Request): Promise<Response> {
+  const response = await (await getServer()).genga.handle(request);
+  return response ?? new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
 }

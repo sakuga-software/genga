@@ -1,11 +1,13 @@
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 import { getServer } from './.server/genga';
-import { handleMcpRequest } from './.server/mcp';
 import type { Route } from './+types/root';
 
-/** The MCP endpoint answers before the routes: its path is a setting (GENGA_MCP_PATH). */
+/**
+ * `genga.handle` answers before the routes: the admin API, the media files, the public API and
+ * the MCP endpoint, whose path is a setting (GENGA_MCP_PATH). The admin pages stay routes.
+ */
 export const middleware: Route.MiddlewareFunction[] = [
-  async ({ request }, next) => (await handleMcpRequest(request, await getServer())) ?? next(),
+  async ({ request }, next) => (await (await getServer()).genga.handle(request)) ?? next(),
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

@@ -11,7 +11,9 @@ import { createMcp, type McpOptions } from './mcp';
 import { createMedia } from './media';
 import { runMigrations } from '../../migrations/migrate.mjs';
 import { originOf } from './origin';
-import { normalizeAdminPath } from '../paths';
+import { DEFAULT_MEDIA_PATH, normalizeAdminPath, normalizeBasePath } from '../paths';
+import { checkPathCollisions, createHandler } from './handle';
+import { createPublicApi, createPublicReads, PUBLIC_API_PATH, type PublicApiOptions } from './public-api';
 import { checkPreviewConfig, previewTarget } from './preview';
 import { createPublished } from './published';
 import type { StorageAdapter } from './storage/adapter';
@@ -27,6 +29,16 @@ export type GengaOptions = {
    * Default: `GENGA_ADMIN_PATH`, else `/admin`.
    */
   adminPath?: string;
+  /**
+   * Base path of the media files. `genga.handle` serves them, and media URLs start with it.
+   * Default: `/media`.
+   */
+  mediaPath?: string;
+  /**
+   * The public read API under `/api/v1`, served by `genga.handle`. Off by default: `true` or
+   * an object turns it on. The server image turns it on.
+   */
+  publicApi?: boolean | PublicApiOptions;
   /** The link "Voir le site" of the admin. `null` hides it. Default: `/`. */
   siteLink?: string | null;
   /** Origins allowed to send writes. The origin of `siteUrl` is always allowed. */
@@ -57,8 +69,11 @@ export type GengaOptions = {
    */
   trustedProxies?: number;
   logger?: GengaLogger;
-  /** Options of the MCP endpoint (`genga.mcp`). */
-  mcp?: McpOptions;
+  /**
+   * The MCP endpoint. Off in `genga.handle` by default: an object turns it on at `path`
+   * (default `/mcp`). The deprecated `genga.mcp` handler reads the same options.
+   */
+  mcp?: false | (McpOptions & { path?: string });
 };
 
 /** Reads a comma-separated list of origins. Throws on a value that is not an origin. */
@@ -73,6 +88,11 @@ export function parseOrigins(value: string | undefined, name = 'origin list'): s
     origins.push(origin);
   }
   return [...new Set(origins)];
+}
+
+function publicApiOptionsOf(value: GengaOptions['publicApi']): PublicApiOptions | null {
+  if (!value) return null;
+  return value === true ? {} : value;
 }
 
 function trustedProxiesFromEnv(): number {
@@ -97,6 +117,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     log: options.logger ?? console,
     siteUrl: options.siteUrl.replace(/\/+$/, ''),
     adminPath: normalizeAdminPath(options.adminPath ?? process.env.GENGA_ADMIN_PATH),
+    mediaPath: normalizeBasePath(options.mediaPath, DEFAULT_MEDIA_PATH, 'media path'),
     siteLink: options.siteLink === undefined ? '/' : options.siteLink,
     allowedOrigins,
     secureCookies: options.secureCookies ?? process.env.NODE_ENV === 'production',
@@ -108,6 +129,15 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     mediaResourcePolicy: options.mediaResourcePolicy ?? 'same-origin',
   };
   checkPreviewConfig(ctx);
+  const publicApiOptions = publicApiOptionsOf(options.publicApi);
+  const mcpOptions = options.mcp || null;
+  const mcpPath = mcpOptions ? normalizeBasePath(mcpOptions.path, '/mcp', 'MCP path') : null;
+  checkPathCollisions({
+    'admin path': ctx.adminPath,
+    'media path': ctx.mediaPath,
+    'public API path': publicApiOptions ? PUBLIC_API_PATH : null,
+    'MCP path': mcpPath,
+  });
   const auth = createAuth(ctx);
   const documents = createDocuments(ctx);
   const media = createMedia(ctx);
@@ -115,8 +145,41 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   const published = createPublished(ctx, auth);
   const tokens = createApiTokens(ctx);
   const services = { ctx, auth, documents, media, users, tokens };
+  const reads = createPublicReads({ ctx, published });
+  const api = createApi(services);
+  const mcp = createMcp(services, mcpOptions ?? {});
 
   let ready: Promise<void> | null = null;
+  function whenReady(): Promise<void> {
+    ready ??= (async () => {
+      await runMigrations(sql);
+      await auth.ensureSetupToken();
+    })().catch((error) => {
+      ready = null;
+      throw error;
+    });
+    return ready;
+  }
+
+  const warned = new Set<string>();
+  function deprecated<A extends unknown[], R>(name: string, replacement: string, run: (...args: A) => R) {
+    return (...args: A): R => {
+      if (!warned.has(name)) {
+        warned.add(name);
+        ctx.log.warn(`[genga] ${name} is deprecated and leaves at 1.0. Use ${replacement}.`);
+      }
+      return run(...args);
+    };
+  }
+
+  const handle = createHandler({
+    ctx,
+    ready: whenReady,
+    adminApi: api,
+    media: media.serve,
+    publicApi: publicApiOptions ? createPublicApi({ ctx, published, media }, reads, publicApiOptions) : null,
+    mcp: mcpPath ? { path: mcpPath, handle: mcp } : null,
+  });
 
   return {
     config,
@@ -125,28 +188,28 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     adminPath: ctx.adminPath,
     auth,
     documents,
-    media,
+    media: { ...media, serve: deprecated('genga.media.serve', 'genga.handle(request)', media.serve) },
     users,
     published,
     tokens,
+    /** Base path of the media files, for example `/media`. */
+    mediaPath: ctx.mediaPath,
     admin: createAdmin(services),
-    api: createApi(services),
     /**
-     * The MCP endpoint, a fetch-style handler. Route POST, GET and DELETE of one path to it,
-     * for example `/mcp`. Clients send `Authorization: Bearer gga_…`.
+     * The one Fetch handler: the admin API, the media files, and when they are on, the public
+     * API and the MCP endpoint. It returns null for any other path, so the app answers it.
+     * It waits for `ready()` and answers 503 when the database is not reachable.
      */
-    mcp: createMcp(services, options.mcp),
+    handle,
+    /** @deprecated Use `genga.handle(request)`, which serves `<adminPath>/api/*`. Leaves at 1.0. */
+    api: deprecated('genga.api', 'genga.handle(request)', api),
+    /**
+     * The MCP endpoint, a fetch-style handler. Clients send `Authorization: Bearer gga_…`.
+     * @deprecated Set the `mcp` option and use `genga.handle(request)`. Leaves at 1.0.
+     */
+    mcp: deprecated('genga.mcp', 'the mcp option and genga.handle(request)', mcp),
     /** Runs the migrations once, then logs a setup URL if no user exists. */
-    ready(): Promise<void> {
-      ready ??= (async () => {
-        await runMigrations(sql);
-        await auth.ensureSetupToken();
-      })().catch((error) => {
-        ready = null;
-        throw error;
-      });
-      return ready;
-    },
+    ready: whenReady,
     /** The URL of the preview frame of a document, with a fresh preview token on another origin. */
     previewTarget: (collection: string, doc: { id: string; slug: string }) => previewTarget(ctx, collection, doc),
     /** Lets the app add an origin at runtime, for example the dev server origin. */
@@ -164,6 +227,14 @@ export type Genga = ReturnType<typeof createGenga>;
 export { runMigrations } from '../../migrations/migrate.mjs';
 export { GengaError } from './errors';
 export { isAllowedOrigin } from './origin';
+export type { GengaHandler, HandleContext } from './handle';
+export {
+  PUBLIC_API_PATH,
+  type DocumentPage,
+  type ListQuery,
+  type PublicApiOptions,
+  type PublicDocument,
+} from './public-api';
 export { clientIp, hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from './auth';
 export { localStorageAdapter } from './storage/local';
 export type { StorageAdapter } from './storage/adapter';

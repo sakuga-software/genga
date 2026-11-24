@@ -60,7 +60,9 @@ packages/genga
 
 The app owns the config: its collections, its blocks (React components of the site) and
 its access overrides. The app mounts the admin route modules under `/admin/*` (or the
-`adminPath` option), the API under `/admin/api/*` and the media route under `/media/*`. See
+`adminPath` option). `genga.handle(request)` answers the admin API under `/admin/api/*`, the
+media under `/media/*` (the `mediaPath` option), and when they are on, the public API and the
+MCP endpoint. See
 [examples/react-router](../examples/react-router) for a complete app.
 
 ## Data model (Postgres)
@@ -161,6 +163,7 @@ components fill the gaps:
 
 `apps/server` runs Genga as a standalone headless CMS, published as the Docker image
 `ghcr.io/sakuga-software/genga`. It is a small React Router app that imports `genga` like any
-consumer. It mounts the admin, a public read API (`/api/v1`), `/media/*` and health checks.
+consumer. Its root middleware calls `genga.handle` with the public API and MCP on; its routes
+add the admin pages and health checks.
 The config is a JSON or `.mjs` file, with blocks as schemas only. See
 [headless server](./headless-server.md) and [public API](./api.md).

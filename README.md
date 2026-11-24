@@ -233,6 +233,16 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 export default DocumentPage;
 ```
 
+```ts
+// app/routes/media.ts, and app/routes/admin/api.ts with the same `action`
+import { genga } from '../.server/genga';
+import type { Route } from './+types/media';
+
+export const loader = async ({ request }: Route.LoaderArgs) =>
+  (await genga.handle(request)) ?? new Response('Not found', { status: 404 });
+export const action = loader;
+```
+
 </details>
 
 **4. Render a page, with live preview.**

@@ -143,24 +143,63 @@ export const genga = createGenga(gengaConfig, {
 Keep one instance per process. In development, store it on `globalThis`, because Vite
 reloads modules. See `examples/react-router/app/.server/genga.ts`.
 
-| Option                | Default                           | Purpose                                                                                             |
-| --------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `databaseUrl`         | required                          | Postgres URL.                                                                                       |
-| `adminPath`           | `GENGA_ADMIN_PATH`, else `/admin` | Base path of the admin. The admin API is under `<adminPath>/api`.                                   |
-| `siteUrl`             | required                          | Public origin. Setup links, sitemap. Its origin can always write.                                   |
-| `allowedOrigins`      | `[]`                              | More origins that can send writes.                                                                  |
-| `mediaDir`            | `./data/media`                    | Directory of the local storage adapter.                                                             |
-| `storage`             | local adapter                     | A `StorageAdapter`.                                                                                 |
-| `adminEmail`          | `null`                            | Email of the first admin, shown in the setup form.                                                  |
-| `secureCookies`       | `NODE_ENV === 'production'`       | `__Host-genga` cookie with `Secure`.                                                                |
-| `trustedProxies`      | `GENGA_TRUSTED_PROXIES`, else 1   | Proxies in front of the app that append to `X-Forwarded-For`.                                       |
-| `siteLink`            | `/`                               | The link "Voir le site" of the admin. `null` hides it.                                              |
-| `previewOrigins`      | `GENGA_PREVIEW_ORIGINS`           | Origins of preview pages on another origin. Read-only access.                                       |
-| `previewSecret`       | `GENGA_SECRET`                    | Signs the preview tokens. 32 characters or more.                                                    |
-| `mediaResourcePolicy` | `same-origin`                     | `Cross-Origin-Resource-Policy` of `/media/*`. Use `cross-origin` when other origins show the media. |
-| `maxConnections`      | 10                                | Size of the Postgres pool.                                                                          |
-| `logger`              | `console`                         | `{ info, warn, error }`.                                                                            |
-| `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the [MCP endpoint](./mcp.md). A request without `Origin` passes.      |
+| Option                | Default                           | Purpose                                                                                               |
+| --------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `databaseUrl`         | required                          | Postgres URL.                                                                                         |
+| `adminPath`           | `GENGA_ADMIN_PATH`, else `/admin` | Base path of the admin. The admin API is under `<adminPath>/api`.                                     |
+| `siteUrl`             | required                          | Public origin. Setup links, sitemap. Its origin can always write.                                     |
+| `allowedOrigins`      | `[]`                              | More origins that can send writes.                                                                    |
+| `mediaDir`            | `./data/media`                    | Directory of the local storage adapter.                                                               |
+| `storage`             | local adapter                     | A `StorageAdapter`.                                                                                   |
+| `adminEmail`          | `null`                            | Email of the first admin, shown in the setup form.                                                    |
+| `secureCookies`       | `NODE_ENV === 'production'`       | `__Host-genga` cookie with `Secure`.                                                                  |
+| `trustedProxies`      | `GENGA_TRUSTED_PROXIES`, else 1   | Proxies in front of the app that append to `X-Forwarded-For`.                                         |
+| `siteLink`            | `/`                               | The link "Voir le site" of the admin. `null` hides it.                                                |
+| `previewOrigins`      | `GENGA_PREVIEW_ORIGINS`           | Origins of preview pages on another origin. Read-only access.                                         |
+| `previewSecret`       | `GENGA_SECRET`                    | Signs the preview tokens. 32 characters or more.                                                      |
+| `mediaPath`           | `/media`                          | Base path of the media files. Media URLs start with it.                                               |
+| `mediaResourcePolicy` | `same-origin`                     | `Cross-Origin-Resource-Policy` of the media files. Use `cross-origin` when other origins show them.   |
+| `publicApi`           | `false`                           | The [public API](./api.md) under `/api/v1` in `genga.handle`. `true` or `{ corsOrigins, rateLimit }`. |
+| `maxConnections`      | 10                                | Size of the Postgres pool.                                                                            |
+| `logger`              | `console`                         | `{ info, warn, error }`.                                                                              |
+| `mcp`                 | off in `genga.handle`             | `{ path, allowedOrigins }` turns the [MCP endpoint](./mcp.md) on. `path` defaults to `/mcp`.          |
+| `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the MCP endpoint. A request without `Origin` passes.                    |
+
+## One handler: `genga.handle`
+
+`genga.handle(request, context?)` is one Fetch handler for every Genga path that is not an
+admin page. It returns a `Response`, or `null` for a path that Genga does not own, so the app
+answers it.
+
+| Path                 | Content                                    | Default |
+| -------------------- | ------------------------------------------ | ------- |
+| `<adminPath>/api/**` | Admin JSON API (session cookie)            | on      |
+| `<mediaPath>/**`     | Media files                                | on      |
+| `/api/v1/**`         | [Public API](./api.md) and preview drafts  | off     |
+| `<mcp.path>`         | [MCP endpoint](./mcp.md) (Streamable HTTP) | off     |
+
+```ts
+// Hono
+app.all('*', async (c, next) => (await genga.handle(c.req.raw)) ?? next());
+
+// React Router: a resource route for each Genga path
+export const loader = async ({ request }: Route.LoaderArgs) =>
+  (await genga.handle(request)) ?? new Response('Not found', { status: 404 });
+export const action = loader;
+```
+
+- **Readiness.** The handler waits for `genga.ready()`. If the database is not reachable, it
+  answers `503` on its paths.
+- **Client address.** Pass the TCP peer as `context.peerAddress` when your server gives it.
+  The handler appends it to `X-Forwarded-For` and counts it as one more proxy hop, so
+  `trustedProxies` still picks the client. Do not pass an address that a proxy computed.
+- **Paths.** Genga refuses to start when two of its paths overlap, for example
+  `adminPath: '/api'` with the public API on.
+- **Admin pages.** The admin pages stay route modules (below) until the admin becomes a
+  single-page app. `genga.handle` returns `null` for them.
+
+`genga.api(request, path)`, `genga.mcp(request)` and `genga.media.serve(key)` still work, but
+they are deprecated: each logs one warning per process, and they leave at 1.0.
 
 ## Environment variables (example app)
 
@@ -180,7 +219,7 @@ component comes from `genga/admin`.
 
 ```ts
 // app/routes.ts
-route('/admin/api/*', 'routes/admin/api.ts'),
+route('/admin/api/*', 'routes/admin/api.ts'), // genga.handle(request)
 route('/admin', 'routes/admin/shell.tsx', [
   route('login', 'routes/admin/login.tsx'),
   route('setup', 'routes/admin/setup.tsx'),
@@ -193,8 +232,8 @@ route('/admin', 'routes/admin/shell.tsx', [
     route('tokens', 'routes/admin/tokens.tsx'),
   ]),
 ]),
-route('/media/*', 'routes/media.ts'),
-route('/mcp', 'routes/mcp.ts'), // optional: the MCP endpoint, see docs/mcp.md
+route('/media/*', 'routes/media.ts'), // genga.handle(request)
+route('/mcp', 'routes/mcp.ts'), // optional: genga.handle(request) with the mcp option, see docs/mcp.md
 ```
 
 The `tokens` page (`TokensPage`, loader `genga.admin.tokens(request)`) lets each user create

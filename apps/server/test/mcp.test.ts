@@ -9,9 +9,6 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createGenga, type Genga } from 'genga/server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parseConfig } from '../app/.server/config-file';
-import { handleMcpRequest } from '../app/.server/mcp';
-import { createPublicApi } from '../app/.server/public-api';
-import type { Settings } from '../app/.server/settings';
 import { TEST_URL } from './global-setup';
 
 const config = parseConfig({
@@ -33,9 +30,8 @@ let genga: Genga;
 let mediaDir: string;
 let server: http.Server;
 let baseUrl: string;
-let settings: Pick<Settings, 'mcp'> = { mcp: { enabled: true, path: '/agents' } };
 
-/** A plain Node server in front of the handlers of apps/server, as `server.mjs` does. */
+/** A plain Node server in front of `genga.handle`. The socket address goes in as the peer. */
 async function toRequest(req: http.IncomingMessage): Promise<Request> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -43,7 +39,6 @@ async function toRequest(req: http.IncomingMessage): Promise<Request> {
   for (const [name, value] of Object.entries(req.headers)) {
     if (typeof value === 'string') headers.set(name, value);
   }
-  headers.set('x-forwarded-for', req.socket.remoteAddress ?? 'unknown');
   const method = req.method ?? 'GET';
   return new Request(new URL(req.url ?? '/', baseUrl), {
     method,
@@ -56,20 +51,9 @@ beforeAll(async () => {
   mediaDir = await mkdtemp(path.join(tmpdir(), 'genga-server-mcp-'));
   server = http.createServer(async (req, res) => {
     const request = await toRequest(req);
-    const publicApi = createPublicApi({
-      genga,
-      publicUrl: baseUrl,
-      corsOrigins: [],
-      previewOrigins: [],
-      previewSecret: null,
-      rateLimit: 1000,
-      trustedProxies: 1,
-    });
     const response =
-      (await handleMcpRequest(request, { genga, settings })) ??
-      (new URL(request.url).pathname.startsWith('/api/v1/')
-        ? await publicApi(request)
-        : new Response('Not found', { status: 404 }));
+      (await genga.handle(request, { peerAddress: req.socket.remoteAddress })) ??
+      new Response('Not found', { status: 404 });
     res.writeHead(response.status, Object.fromEntries(response.headers));
     res.end(Buffer.from(await response.arrayBuffer()));
   });
@@ -81,6 +65,9 @@ beforeAll(async () => {
     siteLink: 'https://www.example.com',
     mediaDir,
     secureCookies: false,
+    trustedProxies: 0,
+    publicApi: true,
+    mcp: { path: '/agents' },
     logger: { info: () => {}, warn: () => {}, error: console.error },
   });
   await genga.ready();
@@ -152,12 +139,19 @@ describe('MCP endpoint of the headless server', () => {
     expect((await fetch(`${baseUrl}/mcp`, { method: 'POST' })).status).toBe(404);
   });
 
-  it('is off with GENGA_MCP=off', async () => {
-    settings = { mcp: { enabled: false, path: '/agents' } };
+  it('is off when the mcp option is false', async () => {
+    const off = createGenga(config, {
+      databaseUrl: TEST_URL,
+      siteUrl: baseUrl,
+      mediaDir,
+      mcp: false,
+      logger: { info: () => {}, warn: () => {}, error: console.error },
+    });
     try {
-      expect((await fetch(`${baseUrl}/agents`, { method: 'POST' })).status).toBe(404);
+      expect(await off.handle(new Request(`${baseUrl}/agents`, { method: 'POST' }))).toBeNull();
+      expect(await off.handle(new Request(`${baseUrl}/mcp`, { method: 'POST' }))).toBeNull();
     } finally {
-      settings = { mcp: { enabled: true, path: '/agents' } };
+      await off.close();
     }
   });
 });

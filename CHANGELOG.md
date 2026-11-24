@@ -6,6 +6,25 @@ All notable changes to the `genga` package. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
+  public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
+  answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer
+  to `X-Forwarded-For` as one more proxy hop. Genga refuses to start when its paths overlap.
+- The public API v1 moves from the server image into `genga/server`. The `publicApi` option
+  turns it on in `genga.handle` (off by default). The server image now serves it, the media,
+  the admin API and MCP through `genga.handle`.
+- `mediaPath` option (default `/media`): media URLs and `genga.handle` follow it.
+- The `mcp` option takes `path` and `false`. MCP is off in `genga.handle` unless the option is
+  set.
+- Public API: the `301` of a renamed slug also gives `path`, the site path of the new slug.
+
+### Deprecated
+
+- `genga.api`, `genga.mcp` and `genga.media.serve`: use `genga.handle`. Each logs one warning
+  per process. They leave at 1.0.
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

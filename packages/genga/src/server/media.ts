@@ -10,6 +10,7 @@ import { isUuid } from '../uuid';
 import { audit } from './auth';
 import type { GengaContext } from './context';
 import { badRequest, forbidden, GengaError, notFound } from './errors';
+import { DEFAULT_MEDIA_PATH } from '../paths';
 
 export const ALLOWED_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -38,25 +39,25 @@ type MediaRow = {
   created_by: string | null;
 };
 
-export function mediaUrl(key: string) {
-  return `/media/${key}`;
+export function mediaUrl(key: string, mediaPath = DEFAULT_MEDIA_PATH) {
+  return `${mediaPath}/${key}`;
 }
 
-export function toMediaObject(row: MediaRow): MediaObject {
+export function toMediaObject(row: MediaRow, mediaPath = DEFAULT_MEDIA_PATH): MediaObject {
   return {
     id: row.id,
-    url: mediaUrl(row.key),
+    url: mediaUrl(row.key, mediaPath),
     filename: row.filename,
     mime: row.mime,
     alt: row.alt,
     width: row.width,
     height: row.height,
-    sizes: (row.sizes ?? []).map((size) => ({ width: size.width, url: mediaUrl(size.key) })),
+    sizes: (row.sizes ?? []).map((size) => ({ width: size.width, url: mediaUrl(size.key, mediaPath) })),
   };
 }
 
-function toMediaItem(row: MediaRow): MediaItem {
-  return { ...toMediaObject(row), size: row.size, createdAt: row.created_at.toISOString() };
+function toItem(row: MediaRow, mediaPath: string): MediaItem {
+  return { ...toMediaObject(row, mediaPath), size: row.size, createdAt: row.created_at.toISOString() };
 }
 
 export async function loadMediaMap(
@@ -67,7 +68,7 @@ export async function loadMediaMap(
   const ids = collectMediaIds(fields, data, ctx.blocks).filter(isUuid);
   if (!ids.length) return new Map();
   const rows = await ctx.sql<MediaRow[]>`SELECT * FROM genga_media WHERE id = ANY(${ids}::uuid[])`;
-  return new Map(rows.map((row) => [row.id, toMediaObject(row)]));
+  return new Map(rows.map((row) => [row.id, toMediaObject(row, ctx.mediaPath)]));
 }
 
 function cleanFilename(name: string): string {
@@ -109,6 +110,7 @@ function lockHash(tx: TransactionSql, hash: string) {
 
 export function createMedia(ctx: GengaContext) {
   const { sql } = ctx;
+  const toMediaItem = (row: MediaRow) => toItem(row, ctx.mediaPath);
 
   function canPublishSomewhere(user: PublicUser) {
     return Object.values(ctx.config.collections).some((collection) => can(user, 'publish', collection.access));
@@ -266,7 +268,7 @@ export function createMedia(ctx: GengaContext) {
     return row ? toMediaItem(row) : null;
   }
 
-  /** Serves `/media/<key>`. The key must match the pattern and a database row. */
+  /** Serves `<mediaPath>/<key>`. The key must match the pattern and a database row. */
   async function serve(key: string): Promise<Response> {
     const match = MEDIA_KEY_PATTERN.exec(key);
     if (!match) return new Response('Not found', { status: 404 });

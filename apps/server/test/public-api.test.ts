@@ -1,11 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createGenga, createPreviewToken, type Genga } from 'genga/server';
+import { createGenga, createPreviewToken, type Genga, type PublicApiOptions } from 'genga/server';
 import sharp from 'sharp';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseConfig } from '../app/.server/config-file';
-import { createPublicApi } from '../app/.server/public-api';
 import { TEST_URL } from './global-setup';
 
 const PUBLIC_URL = 'https://cms.example.com';
@@ -37,17 +36,17 @@ let genga: Genga;
 let mediaDir: string;
 let clock = Date.now();
 
-function api(rateLimit = 1000) {
-  return createPublicApi({
-    genga,
-    publicUrl: PUBLIC_URL,
-    corsOrigins: [SITE],
-    previewOrigins: [SITE],
-    previewSecret: SECRET,
-    rateLimit,
-    trustedProxies: 1,
-    now: () => clock,
-  });
+/** The handler of the current instance. Options other than the defaults start a new instance. */
+async function api(options?: PublicApiOptions) {
+  if (options) {
+    await genga.close();
+    genga = start(options);
+  }
+  return async (request: Request) => {
+    const response = await genga.handle(request);
+    if (!response) throw new Error(`genga.handle returned null for ${request.url}`);
+    return response;
+  };
 }
 
 function get(pathname: string, headers: Record<string, string> = {}, method = 'GET') {
@@ -73,7 +72,7 @@ async function publishPost(user: Awaited<ReturnType<typeof editor>>, data: Recor
   return { ...created, versionId: published.versionId };
 }
 
-function start() {
+function start(publicApi: PublicApiOptions = {}) {
   return createGenga(config, {
     databaseUrl: TEST_URL,
     siteUrl: PUBLIC_URL,
@@ -81,6 +80,8 @@ function start() {
     previewOrigins: [SITE],
     previewSecret: SECRET,
     secureCookies: false,
+    trustedProxies: 1,
+    publicApi: { corsOrigins: [SITE], rateLimit: 1000, now: () => clock, ...publicApi },
     logger: { info: () => {}, warn: () => {}, error: console.error },
   });
 }
@@ -110,7 +111,7 @@ describe('published content only', () => {
   it('never shows a draft, and shows the published version while a newer draft waits', async () => {
     const user = await editor();
     const draft = await genga.documents.create(user, 'posts', { title: 'Secret draft' });
-    const handle = api();
+    const handle = await api();
 
     const list = await (await handle(get('/api/v1/collections/posts/documents'))).json();
     expect(list).toEqual({ documents: [], total: 0, nextCursor: null });
@@ -149,7 +150,7 @@ describe('published content only', () => {
       body: [{ _id: 'b1', _type: 'image', image: media.id, caption: 'Caption' }],
     });
 
-    const { document } = await (await api()(get(`/api/v1/documents/${post.id}`))).json();
+    const { document } = await (await (await api())(get(`/api/v1/documents/${post.id}`))).json();
     expect(document.data.cover).toMatchObject({ id: media.id, alt: 'A cover', width: 1200, height: 600 });
     expect(document.data.cover.url).toMatch(new RegExp(`^${PUBLIC_URL}/media/[a-f0-9]{64}\\.png$`));
     expect(document.data.cover.sizes[0].url.startsWith(`${PUBLIC_URL}/media/`)).toBe(true);
@@ -157,7 +158,7 @@ describe('published content only', () => {
     expect(document.data.intro.html).toBe('<p><strong>Hello &lt;world&gt;</strong></p>');
     expect(document.data.intro.content[0].type).toBe('paragraph');
 
-    const meta = await (await api()(get(`/api/v1/media/${media.id}`))).json();
+    const meta = await (await (await api())(get(`/api/v1/media/${media.id}`))).json();
     expect(meta.media).toMatchObject({ id: media.id, mime: 'image/png', alt: 'A cover', url: document.data.cover.url });
   });
 
@@ -170,7 +171,7 @@ describe('published content only', () => {
     ] as const) {
       await publishPost(user, { title, publishedDate, tags });
     }
-    const handle = api();
+    const handle = await api();
     const titles = async (query: string) => {
       const body = await (await handle(get(`/api/v1/collections/posts/documents${query}`))).json();
       return { titles: body.documents.map((doc: { data: { title: string } }) => doc.data.title), body };
@@ -198,23 +199,23 @@ describe('published content only', () => {
     const post = await publishPost(user, { title: 'First name' });
     const saved = await genga.documents.saveDraft(user, post.id, { title: 'First name', slug: 'second-name' }, 1);
     await genga.documents.publish(user, post.id, saved.draftRev);
-    const response = await api()(get('/api/v1/collections/posts/documents/first-name'));
+    const response = await (await api())(get('/api/v1/collections/posts/documents/first-name'));
     expect(response.status).toBe(301);
     expect(response.headers.get('location')).toBe('/api/v1/collections/posts/documents/second-name');
     expect(await response.json()).toMatchObject({ error: 'moved', slug: 'second-name' });
   });
 
   it('lists the collections and their fields', async () => {
-    const body = await (await api()(get('/api/v1/collections'))).json();
+    const body = await (await (await api())(get('/api/v1/collections'))).json();
     expect(body.collections[0]).toMatchObject({ name: 'posts', path: '/blog/{slug}', titleField: 'title' });
     expect(body.collections[0].fields.cover).toEqual({ type: 'media' });
     expect(body.blocks).toEqual([{ type: 'image', label: 'Image', fields: expect.any(Object) }]);
-    expect((await api()(get('/api/v1/collections/posts'))).status).toBe(200);
+    expect((await (await api())(get('/api/v1/collections/posts'))).status).toBe(200);
   });
 
   it('is read-only', async () => {
     for (const method of ['POST', 'PUT', 'DELETE', 'PATCH']) {
-      expect((await api()(get('/api/v1/collections', {}, method))).status).toBe(405);
+      expect((await (await api())(get('/api/v1/collections', {}, method))).status).toBe(405);
     }
   });
 });
@@ -223,7 +224,7 @@ describe('cache headers', () => {
   it('sends an ETag and a 304, and a new ETag after a publish', async () => {
     const user = await editor();
     const post = await publishPost(user, { title: 'Cached' });
-    const handle = api();
+    const handle = await api();
     const url = `/api/v1/collections/posts/documents/${post.slug}`;
 
     const first = await handle(get(url));
@@ -250,7 +251,7 @@ describe('cache headers', () => {
 
 describe('CORS', () => {
   it('allows only the listed origins', async () => {
-    const handle = api();
+    const handle = await api();
     const allowed = await handle(get('/api/v1/collections', { origin: SITE }));
     expect(allowed.headers.get('access-control-allow-origin')).toBe(SITE);
     expect(allowed.headers.get('access-control-expose-headers')).toContain('ETag');
@@ -272,15 +273,7 @@ describe('CORS', () => {
   });
 
   it('can allow every origin', async () => {
-    const handle = createPublicApi({
-      genga,
-      publicUrl: PUBLIC_URL,
-      corsOrigins: '*',
-      previewOrigins: [],
-      previewSecret: null,
-      rateLimit: 100,
-      trustedProxies: 1,
-    });
+    const handle = await api({ corsOrigins: '*' });
     const response = await handle(get('/api/v1/collections', { origin: 'https://any.example' }));
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
   });
@@ -288,7 +281,7 @@ describe('CORS', () => {
 
 describe('rate limit', () => {
   it('limits each client address with a token bucket', async () => {
-    const handle = api(3);
+    const handle = await api({ rateLimit: 3 });
     for (let index = 0; index < 3; index += 1) expect((await handle(get('/api/v1/collections'))).status).toBe(200);
     const limited = await handle(get('/api/v1/collections', { origin: SITE }));
     expect(limited.status).toBe(429);
@@ -308,7 +301,7 @@ describe('preview', () => {
     const post = await genga.documents.create(user, 'posts', { title: 'Draft only', intro: paragraph('Draft text') });
     const other = await genga.documents.create(user, 'posts', { title: 'Other' });
     const token = createPreviewToken(SECRET, post.id, { now: clock });
-    const handle = api();
+    const handle = await api();
     const url = (id: string, value: string) => `/api/v1/preview/${id}?token=${encodeURIComponent(value)}`;
 
     const ok = await handle(get(url(post.id, token), { origin: SITE }));

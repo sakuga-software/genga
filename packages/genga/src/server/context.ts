@@ -16,13 +16,15 @@ export type GengaContext = {
   siteUrl: string;
   /** Base path of the admin, for example `/admin`. The admin API is under `<adminPath>/api`. */
   adminPath: string;
+  /** Base path of the media files, for example `/media`. */
+  mediaPath: string;
   siteLink: string | null;
   allowedOrigins: string[];
   /** Origins of preview pages on another origin. They never get write access. */
   previewOrigins: string[];
   /** HMAC secret of the preview tokens. */
   previewSecret: string | null;
-  /** `Cross-Origin-Resource-Policy` of `/media/*`. */
+  /** `Cross-Origin-Resource-Policy` of `<mediaPath>/*`. */
   mediaResourcePolicy: 'same-origin' | 'same-site' | 'cross-origin';
   secureCookies: boolean;
   adminEmail: string | null;
