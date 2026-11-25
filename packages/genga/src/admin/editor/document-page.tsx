@@ -27,6 +27,7 @@ import { SplitPane } from '../ui/split-pane';
 import { EditorContext, type EditorContextValue } from './editor-context';
 import { FieldInput } from './field-input';
 import { PreviewPane } from './preview-pane';
+import { PREVIEW_TOKEN_PARAM } from '../../preview/bridge';
 import { issuesToErrors, useDraft, type SaveState } from './use-draft';
 import { VersionsDrawer } from './versions-drawer';
 import { adminPath } from '../../client/admin-path';
@@ -139,6 +140,11 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
     const result = await apiRequest<{ preview: PreviewTarget | null }>(`documents/${doc.id}/preview`);
     setPreview(result.preview);
     return result.preview?.url ?? null;
+  }, [doc.id]);
+
+  const renewPreviewToken = useCallback(async () => {
+    const result = await apiRequest<{ preview: PreviewTarget | null }>(`documents/${doc.id}/preview`);
+    return result.preview?.origin ? new URL(result.preview.url).searchParams.get(PREVIEW_TOKEN_PARAM) : null;
   }, [doc.id]);
 
   const shownPreviewPath = useRef(draft.previewPath);
@@ -352,6 +358,9 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
                 src={preview.url}
                 targetOrigin={preview.origin}
                 refreshSrc={refreshPreview}
+                renewToken={renewPreviewToken}
+                savedAt={draft.savedAt}
+                draftRev={draft.rev}
                 data={populated}
                 selectedBlockId={selectedBlockId}
                 onSelectBlock={(id) => selectBlock(id)}

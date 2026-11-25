@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { connectBridge } from '../preview/bridge';
 import type { PublishedDocument } from '../types';
 
@@ -18,6 +18,8 @@ function setDraft(documentId: string, data: Record<string, unknown>) {
 export type PreviewDataOptions = {
   /** The origin of the Genga admin. Default: the origin of the page. */
   adminOrigin?: string;
+  /** Called after each autosave of the editor, for data that renders on the server only. */
+  onSaved?: (draftRev: number) => void;
 };
 
 /**
@@ -30,6 +32,10 @@ export function usePreviewData<T>(
   options: PreviewDataOptions = {},
 ): PublishedDocument<T> {
   const { adminOrigin } = options;
+  const onSaved = useRef(options.onSaved);
+  useEffect(() => {
+    onSaved.current = options.onSaved;
+  });
   useEffect(
     () =>
       preview
@@ -37,6 +43,7 @@ export function usePreviewData<T>(
             documentId: doc.id,
             adminOrigin: adminOrigin ?? window.location.origin,
             onDraft: (data) => setDraft(doc.id, data),
+            onSaved: (draftRev) => onSaved.current?.(draftRev),
           })
         : undefined,
     [preview, doc.id, adminOrigin],

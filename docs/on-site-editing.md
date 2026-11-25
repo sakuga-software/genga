@@ -340,18 +340,18 @@ This is the one table of the bridge messages. All of them join the `PreviewMessa
 adapter shares one definition, and all follow the origin rules of the
 [preview bridge](./preview-bridge.md#messages).
 
-| Message                                            | From   | Status           | Purpose                                             |
-| -------------------------------------------------- | ------ | ---------------- | --------------------------------------------------- |
-| `genga:ready`, `genga:hello`                       | both   | exists           | Handshake                                           |
-| `genga:draft`                                      | editor | exists           | The populated draft; the confirmed value of an edit |
-| `genga:select`, `genga:focus`                      | both   | exists           | Selection of a block on the page and in the form    |
-| `genga:saved`                                      | editor | adapters, step 1 | Refresh of server-rendered blocks                   |
-| `genga:token`                                      | editor | adapters, step 1 | A fresh preview token (remote mode)                 |
-| `genga:edit:start`, `genga:edit`, `genga:edit:end` | frame  | phase 1          | Open a field, change its value, close it            |
-| `genga:block:*`                                    | frame  | phase 1          | Block intents (section 4)                           |
-| `genga:media:pick`                                 | frame  | phase 1          | Open the media picker for a path                    |
-| `genga:presence`                                   | editor | phase 2          | Who edits which path                                |
-| `genga:y:update`                                   | both   | phase 3          | Yjs updates of a rich text field                    |
+| Message                                            | From   | Status  | Purpose                                             |
+| -------------------------------------------------- | ------ | ------- | --------------------------------------------------- |
+| `genga:ready`, `genga:hello`                       | both   | exists  | Handshake                                           |
+| `genga:draft`                                      | editor | exists  | The populated draft; the confirmed value of an edit |
+| `genga:select`, `genga:focus`                      | both   | exists  | Selection of a block on the page and in the form    |
+| `genga:saved`                                      | editor | exists  | Refresh of server-rendered blocks                   |
+| `genga:token`                                      | editor | exists  | A fresh preview token (remote mode)                 |
+| `genga:edit:start`, `genga:edit`, `genga:edit:end` | frame  | phase 1 | Open a field, change its value, close it            |
+| `genga:block:*`                                    | frame  | phase 1 | Block intents (section 4)                           |
+| `genga:media:pick`                                 | frame  | phase 1 | Open the media picker for a path                    |
+| `genga:presence`                                   | editor | phase 2 | Who edits which path                                |
+| `genga:y:update`                                   | both   | phase 3 | Yjs updates of a rich text field                    |
 
 ## 9. Out of scope
 

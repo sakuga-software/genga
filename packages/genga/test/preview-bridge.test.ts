@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { connectBridge, connectPreview, isTrustedMessage } from '../src/preview';
+import { connectBridge, connectPreview, isTrustedMessage, previewToken, readPreviewParams } from '../src/preview';
 
 const ADMIN = 'https://cms.example.com';
 const DOC = '6f1c2a5e-3b1d-4c55-9f0e-2a7d8c9b0e11';
@@ -38,6 +38,13 @@ function fakeFrame(url: string) {
   const win = {
     parent,
     location: new URL(url),
+    history: {
+      state: { key: 'kept' },
+      replaceState: vi.fn((state: unknown, _title: string, next: string) => {
+        win.location = new URL(next);
+        win.history.state = state as { key: string };
+      }),
+    },
     addEventListener: (type: string, listener: Listener) => listeners.set(type, listener),
     removeEventListener: (type: string) => listeners.delete(type),
   };
@@ -110,6 +117,53 @@ describe('connectPreview', () => {
     answer(new Response(JSON.stringify({ document: { data: { title: 'stale' } } })));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(onDraft.mock.calls.map(([data]) => data.title)).toEqual(['live']);
+    connection.disconnect();
+  });
+});
+
+describe('preview tokens in the frame', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const OTHER = '0d9e7c55-1a2b-4c3d-8e9f-0a1b2c3d4e5f';
+
+  it('moves the token from the address bar to memory, and keeps the other parameters', () => {
+    const frame = fakeFrame(`https://site.example/blog/a?genga-preview=${OTHER}&genga-token=first.token&x=1`);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const connection = connectPreview({ adminOrigin: ADMIN, onDraft: () => {} });
+
+    const win = window as unknown as { location: URL; history: { replaceState: ReturnType<typeof vi.fn> } };
+    expect(win.history.replaceState).toHaveBeenCalledWith({ key: 'kept' }, '', expect.any(String));
+    expect(win.location.href).toBe(`https://site.example/blog/a?genga-preview=${OTHER}&x=1`);
+    expect(connection.token()).toBe('first.token');
+    expect(previewToken(OTHER)).toBe('first.token');
+    expect(readPreviewParams(win.location.href)).toEqual({ documentId: OTHER, token: 'first.token' });
+    expect(frame.parent.postMessage).toHaveBeenCalledWith({ type: 'genga:ready', documentId: OTHER }, ADMIN);
+    connection.disconnect();
+  });
+
+  it('takes a fresh token and a saved notice from the admin only', () => {
+    const frame = fakeFrame(`https://site.example/blog/a?genga-preview=${DOC}&genga-token=old.token`);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const onToken = vi.fn();
+    const onSaved = vi.fn();
+    const connection = connectPreview({ adminOrigin: ADMIN, onDraft: () => {}, onToken, onSaved });
+
+    frame.send('https://evil.example', { type: 'genga:token', documentId: DOC, token: 'evil.token' });
+    frame.send(ADMIN, { type: 'genga:token', documentId: 'another', token: 'other.token' });
+    expect(connection.token()).toBe('old.token');
+    frame.send(ADMIN, { type: 'genga:token', documentId: DOC, token: 'new.token' });
+    expect(connection.token()).toBe('new.token');
+    expect(onToken).toHaveBeenCalledWith('new.token', DOC);
+
+    frame.send('https://evil.example', { type: 'genga:saved', documentId: DOC, draftRev: 9 });
+    frame.send(ADMIN, { type: 'genga:saved', documentId: DOC, draftRev: 'x' });
+    frame.send(ADMIN, { type: 'genga:saved', documentId: DOC, draftRev: 4 });
+    expect(onSaved.mock.calls).toEqual([[4, DOC]]);
     connection.disconnect();
   });
 });

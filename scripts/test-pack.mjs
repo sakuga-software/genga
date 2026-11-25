@@ -44,6 +44,30 @@ async function expectStatus(url, expected, contains) {
   return body;
 }
 
+/**
+ * Walks the import graph of a built file. Fails on a bare import (a package or a Node built-in)
+ * and on Node globals, so the entry runs on edge runtimes.
+ */
+function checkEdgeSafe(entry) {
+  const seen = new Set();
+  const problems = [];
+  const visit = (file) => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    const code = readFileSync(file, 'utf8');
+    for (const [, specifier] of code.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g)) {
+      if (specifier.startsWith('.')) visit(path.resolve(path.dirname(file), specifier));
+      else problems.push(`${path.basename(file)} imports ${specifier}`);
+    }
+    for (const name of ['Buffer', 'process.', 'require(']) {
+      if (code.includes(name)) problems.push(`${path.basename(file)} uses ${name}`);
+    }
+  };
+  visit(entry);
+  if (problems.length) throw new Error(`genga/remote is not edge-safe:\n  ${problems.join('\n  ')}`);
+  console.log(`ok genga/remote imports only its own ${seen.size} files`);
+}
+
 let server;
 try {
   run('pnpm', ['--filter', 'genga', 'pack', '--pack-destination', work], root);
@@ -66,6 +90,7 @@ try {
   writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 
   run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], app);
+  checkEdgeSafe(path.join(app, 'node_modules/genga/dist/remote.mjs'));
   run('npm', ['run', 'typecheck'], app);
   run('npm', ['run', 'build'], app);
 

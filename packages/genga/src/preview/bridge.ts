@@ -48,6 +48,10 @@ export type BridgeOptions = {
   /** The origin of the Genga admin. The bridge sends to it and accepts messages only from it. */
   adminOrigin: string;
   onDraft: (data: Record<string, unknown>) => void;
+  /** Called after each autosave of the editor, for pages that render on the server only. */
+  onSaved?: (draftRev: number) => void;
+  /** Called with a fresh preview token, before the current one expires. */
+  onToken?: (token: string) => void;
 };
 
 /**
@@ -55,7 +59,7 @@ export type BridgeOptions = {
  * drafts and focus, and sends a click on a block. It does nothing outside a frame.
  * Returns the function that disconnects it.
  */
-export function connectBridge({ documentId, adminOrigin, onDraft }: BridgeOptions): () => void {
+export function connectBridge({ documentId, adminOrigin, onDraft, onSaved, onToken }: BridgeOptions): () => void {
   if (typeof window === 'undefined' || window.parent === window) return () => {};
   const origin = normalizeOrigin(adminOrigin);
   const parent = window.parent;
@@ -73,6 +77,8 @@ export function connectBridge({ documentId, adminOrigin, onDraft }: BridgeOption
     const message = event.data;
     if (message.type === 'genga:hello') post({ type: 'genga:ready', documentId });
     if (message.type === 'genga:draft') onDraft(message.data);
+    if (message.type === 'genga:saved' && Number.isInteger(message.draftRev)) onSaved?.(message.draftRev);
+    if (message.type === 'genga:token' && typeof message.token === 'string') onToken?.(message.token);
     if (message.type === 'genga:focus') {
       for (const element of document.querySelectorAll('[data-genga-focused]'))
         element.removeAttribute('data-genga-focused');

@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     server: 'src/server/index.ts',
+    remote: 'src/remote/index.ts',
     admin: 'src/admin/index.ts',
     render: 'src/render/index.ts',
     client: 'src/client/index.ts',

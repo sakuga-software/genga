@@ -474,6 +474,7 @@ These items are **planned**, not available yet:
 - [Headless server](./docs/headless-server.md)
 - [Public API](./docs/api.md) and its [OpenAPI file](./docs/openapi.yaml)
 - [Publish events and webhooks](./docs/events.md)
+- [Content source](./docs/content-source.md): `resolveRoute` and `createRemoteSource`
 - [Security model](./docs/security.md)
 - [Changelog](./CHANGELOG.md)
 

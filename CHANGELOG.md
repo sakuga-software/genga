@@ -28,6 +28,21 @@ All notable changes to the `genga` package. The format follows
   server image), from an outbox table with retries and backoff for 24 hours. Migration
   `0004_events`. `verifyWebhook()` checks them on Node and edge runtimes.
 - Public API: `GET /api/v1/events?after=<id>` lists the events of the last 7 days.
+- Content source: `GengaSource` with `getDocument`, `listDocuments`, `resolveRoute`,
+  `getDraft`, `sitemap` and `tagsFor`, in the public shape. `createGenga()` implements it in
+  embedded mode (preview by session). `createRemoteSource()` from the new entry `genga/remote`
+  implements it over the public API, with `fetch` only (edge-safe; preview by token, checked by
+  the server). See `docs/content-source.md`.
+- Public API: `GET /api/v1/sitemap`.
+- Preview on another origin: `connectPreview` removes `genga-token` from the address bar and
+  keeps it in memory (`connection.token()`, `previewToken(id)`). The editor renews the token
+  with the `genga:token` message, and sends `genga:saved` after each autosave (`onSaved` in
+  `connectPreview` and `usePreviewData`).
+
+### Changed
+
+- Preview responses (`PREVIEW_HEADERS`, `loadForRoute`) also send `Referrer-Policy: no-referrer`
+  and `X-Robots-Tag: noindex`.
 
 ### Deprecated
 

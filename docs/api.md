@@ -237,6 +237,12 @@ curl "https://cms.example.com/api/v1/preview/3caa7401-…?token=mi3k2x9.Xq…"
   new one.
 - Without `GENGA_SECRET`, this endpoint answers `404`.
 
+### `GET /api/v1/sitemap`
+
+The path and the time of the last publish of every published document:
+`{ "entries": [{ "path": "/blog/hello", "lastModified": "2026-11-24T10:00:00.000Z" }] }`.
+Cached like the other content responses.
+
 ### `GET /api/v1/events`
 
 The [publish events](./events.md) of the last 7 days, oldest first, for a site that missed a

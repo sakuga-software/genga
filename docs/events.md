@@ -45,7 +45,7 @@ media item: the events endpoint is public, and the item can be in drafts only.
 | `genga:c:<collection>`        | Lists of a collection, its sitemap entries | every document event of the collection     |
 | `genga:d:<collection>:<slug>` | One document by slug                       | events of that document (old and new slug) |
 
-Tag your cached reads with `tagsFor(collection, slug?)` from `genga`. It gives the tags that
+Tag your cached reads with `tagsFor(collection, slug?)` from `genga/remote` (also exported by `genga`). It gives the tags that
 the events invalidate, so a read and its invalidation always agree.
 
 ## In process
@@ -106,10 +106,10 @@ GENGA_WEBHOOKS='[{"url":"https://www.example.com/api/genga/webhook","secret":"wh
 
 ### Receive a webhook
 
-`verifyWebhook` runs on Node and on edge runtimes (WebCrypto only):
+`verifyWebhook` from `genga/remote` runs on Node and on edge runtimes (WebCrypto only, no Node module in its import graph):
 
 ```ts
-import { verifyWebhook, WebhookVerificationError } from 'genga';
+import { verifyWebhook, WebhookVerificationError } from 'genga/remote';
 
 export async function POST(request: Request) {
   try {

@@ -77,7 +77,11 @@ export type PreviewMessage =
   | { type: 'genga:hello'; documentId: string }
   | { type: 'genga:draft'; documentId: string; data: Record<string, unknown> }
   | { type: 'genga:select'; documentId: string; blockId: string; index: number }
-  | { type: 'genga:focus'; documentId: string; blockId: string | null };
+  | { type: 'genga:focus'; documentId: string; blockId: string | null }
+  /** The autosave stored the draft. Server-rendered pages refresh. */
+  | { type: 'genga:saved'; documentId: string; draftRev: number }
+  /** A fresh preview token, before the current one expires (preview on another origin). */
+  | { type: 'genga:token'; documentId: string; token: string };
 
 export type CollectionNav = {
   name: string;
