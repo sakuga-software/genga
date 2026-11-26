@@ -86,8 +86,11 @@ const S3_DELIVERIES = ['proxy', 'public', 'signed'] as const;
 function s3Settings(env: NodeJS.ProcessEnv, problems: string[]): S3StorageOptions | null {
   const bucket = env.GENGA_S3_BUCKET?.trim();
   if (!bucket) return null;
-  const accessKeyId = env.GENGA_S3_ACCESS_KEY_ID?.trim() || env.AWS_ACCESS_KEY_ID?.trim() || '';
-  const secretAccessKey = env.GENGA_S3_SECRET_ACCESS_KEY?.trim() || env.AWS_SECRET_ACCESS_KEY?.trim() || '';
+  // One source for the whole set: a session token of the AWS_* variables does not fit GENGA_S3_* keys.
+  const own = Boolean(env.GENGA_S3_ACCESS_KEY_ID?.trim());
+  const accessKeyId = (own ? env.GENGA_S3_ACCESS_KEY_ID : env.AWS_ACCESS_KEY_ID)?.trim() || '';
+  const secretAccessKey = (own ? env.GENGA_S3_SECRET_ACCESS_KEY : env.AWS_SECRET_ACCESS_KEY)?.trim() || '';
+  const sessionToken = (own ? env.GENGA_S3_SESSION_TOKEN : env.AWS_SESSION_TOKEN)?.trim() || undefined;
   if (!accessKeyId || !secretAccessKey) {
     problems.push('GENGA_S3_ACCESS_KEY_ID and GENGA_S3_SECRET_ACCESS_KEY are required with GENGA_S3_BUCKET.');
   }
@@ -115,7 +118,7 @@ function s3Settings(env: NodeJS.ProcessEnv, problems: string[]): S3StorageOption
     endpoint,
     accessKeyId,
     secretAccessKey,
-    sessionToken: env.AWS_SESSION_TOKEN?.trim() || undefined,
+    sessionToken,
     prefix: env.GENGA_S3_PREFIX?.trim() || undefined,
     forcePathStyle: pathStyle ? ['true', '1'].includes(pathStyle) : undefined,
     delivery: delivery as S3StorageOptions['delivery'],

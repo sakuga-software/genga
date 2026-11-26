@@ -58,6 +58,46 @@ describe('s3StorageAdapter without a bucket', () => {
     expect(denied.requests).toHaveLength(2);
   });
 
+  it('lets a slow client read a body for longer than the timeout', async () => {
+    const slow = recorder(
+      () =>
+        new Response(
+          new ReadableStream({
+            async start(controller) {
+              controller.enqueue(new Uint8Array([1, 2]));
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              controller.enqueue(new Uint8Array([3]));
+              controller.close();
+            },
+          }),
+          { headers: { 'content-length': '3' } },
+        ),
+    );
+    const adapter = s3StorageAdapter({
+      ...CREDENTIALS,
+      bucket: 'b',
+      endpoint: 'http://s3.test',
+      timeoutMs: 100,
+      fetch: (async (request: Request) => {
+        const response = await slow.fetch(request);
+        // A real fetch errors the body when the signal aborts; this fake does the same.
+        const reader = response.body!.getReader();
+        const body = new ReadableStream({
+          async pull(controller) {
+            if (request.signal.aborted) return controller.error(request.signal.reason);
+            const { done, value } = await reader.read();
+            if (request.signal.aborted) return controller.error(request.signal.reason);
+            if (done) controller.close();
+            else controller.enqueue(value);
+          },
+        });
+        return new Response(body, { headers: response.headers });
+      }) as typeof fetch,
+    });
+    const file = await adapter.get('abc.png');
+    expect(Buffer.from(await new Response(file?.body).arrayBuffer())).toEqual(Buffer.from([1, 2, 3]));
+  });
+
   it('refuses an unsafe key, and names only the bad options', async () => {
     const adapter = s3StorageAdapter({
       ...CREDENTIALS,
@@ -99,7 +139,7 @@ describe('s3StorageAdapter without a bucket', () => {
     expect(url.origin + url.pathname).toBe('http://s3.test/b/abc.pdf');
     expect(url.searchParams.get('X-Amz-Expires')).toBe('600');
     expect(url.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
-    expect(url.searchParams.get('response-content-disposition')).toBe('attachment; filename="a.pdf"');
+    expect(url.searchParams.get('response-content-disposition')).toBe('attachment;filename="a.pdf"');
     expect(signed?.expiresIn).toBe(600);
   });
 });
@@ -234,6 +274,17 @@ describe('s3StorageAdapter against MinIO', () => {
       expect((await bytesOf(response)).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
       expect((await fetch(`${ENDPOINT}/${bucket}/genga/${key}`)).status).toBe(403);
       expect((await genga.media.serve(`${'f'.repeat(64)}.png`)).status).toBe(404);
+
+      const pdf = new File(
+        [Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n')],
+        'rapport annuel.pdf',
+      );
+      const uploaded = await genga.media.upload(user, pdf, '');
+      expect(uploaded.media.mime).toBe('application/pdf');
+      const pdfRedirect = await genga.media.serve(uploaded.media.url.replace('/media/', ''));
+      const pdfResponse = await fetch(pdfRedirect.headers.get('location') as string);
+      expect(pdfResponse.status).toBe(200);
+      expect(pdfResponse.headers.get('content-disposition')).toBe('attachment;filename="rapport_annuel.pdf"');
     });
   });
 });

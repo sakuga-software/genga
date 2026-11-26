@@ -173,6 +173,19 @@ describe('settings', () => {
       accessKeyId: 'a',
       delivery: 'proxy',
     });
+    const roleToken = {
+      AWS_SESSION_TOKEN: 'role-token',
+      AWS_ACCESS_KEY_ID: 'role',
+      AWS_SECRET_ACCESS_KEY: 'role-secret',
+    };
+    expect(readSettings({ ...env, ...s3, ...roleToken }).s3).toMatchObject({
+      accessKeyId: 'SCWEXAMPLE',
+      sessionToken: undefined,
+    });
+    expect(readSettings({ ...env, GENGA_S3_BUCKET: 'b', ...roleToken }).s3).toMatchObject({
+      accessKeyId: 'role',
+      sessionToken: 'role-token',
+    });
     for (const [values, problem] of [
       [{ GENGA_S3_SECRET_ACCESS_KEY: '' }, 'GENGA_S3_ACCESS_KEY_ID and GENGA_S3_SECRET_ACCESS_KEY are required'],
       [{ GENGA_S3_DELIVERY: 'cdn' }, 'GENGA_S3_DELIVERY must be proxy, public or signed'],

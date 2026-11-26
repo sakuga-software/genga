@@ -91,10 +91,16 @@ export function s3StorageAdapter(options: S3StorageOptions): StorageAdapter {
     return `${base}/${prefix}${key}`;
   }
 
+  /** The timeout stops at the response headers: a slow client can take longer to read a large body. */
   async function call(method: string, key: string, init: RequestInit = {}) {
     const signed = await client.sign(objectUrl(key), { ...init, method });
-    const response = await send(new Request(signed, { signal: AbortSignal.timeout(timeoutMs) }));
-    return response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new Error(`The S3 ${method} of ${key} took too long.`)), timeoutMs);
+    try {
+      return await send(new Request(signed, { signal: controller.signal }));
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   function failure(method: string, key: string, status: number) {
@@ -136,7 +142,10 @@ export function s3StorageAdapter(options: S3StorageOptions): StorageAdapter {
     adapter.signedUrl = async (key, extra = {}) => {
       const url = new URL(objectUrl(key));
       url.searchParams.set('X-Amz-Expires', String(expiresIn));
-      if (extra.contentDisposition) url.searchParams.set('response-content-disposition', extra.contentDisposition);
+      // A query space becomes `+`, which some providers read literally in a signed URL. RFC 6266
+      // allows the header without the space, and the cleaned filename has none.
+      const disposition = extra.contentDisposition?.replace(/;\s+/g, ';');
+      if (disposition) url.searchParams.set('response-content-disposition', disposition);
       const signed = await client.sign(url.href, { method: 'GET', aws: { signQuery: true } });
       return { url: signed.url, expiresIn };
     };

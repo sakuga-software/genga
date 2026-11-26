@@ -203,6 +203,7 @@ Storage, MinIO) instead of `GENGA_MEDIA_DIR`.
 | `GENGA_S3_BUCKET`            | (none: local directory)        | The bucket.                                                                             |
 | `GENGA_S3_ACCESS_KEY_ID`     | `AWS_ACCESS_KEY_ID`            | The access key.                                                                         |
 | `GENGA_S3_SECRET_ACCESS_KEY` | `AWS_SECRET_ACCESS_KEY`        | The secret key. Give it as a secret of your platform, never in the image.               |
+| `GENGA_S3_SESSION_TOKEN`     | `AWS_SESSION_TOKEN`            | For temporary credentials.                                                              |
 | `GENGA_S3_REGION`            | `AWS_REGION`, else `us-east-1` | The region, for example `fr-par` on Scaleway.                                           |
 | `GENGA_S3_ENDPOINT`          | AWS                            | The origin of another provider, for example `https://s3.fr-par.scw.cloud`.              |
 | `GENGA_S3_FORCE_PATH_STYLE`  | `true` with an endpoint        | Path-style URLs (`<endpoint>/<bucket>/<key>`). `false` for virtual-hosted URLs.         |
@@ -223,6 +224,11 @@ How browsers get the files:
 - **`signed`**. The bucket stays private. `/media/<key>` checks the key against the database,
   then redirects (302) to a presigned URL. The redirect is cached for 5 minutes at most, well
   under the signature lifetime. The JSON of the API keeps the stable `/media/<key>` URL.
+
+Genga reads the keys from `GENGA_S3_*` when `GENGA_S3_ACCESS_KEY_ID` is set, else from the three
+`AWS_*` variables, never a mix of both. It reads them once at start: temporary credentials are not
+renewed. Set `GENGA_S3_REGION` for a provider other than MinIO (for example `fr-par`): the
+signature includes the region.
 
 The access key needs `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the prefix. Files
 that are already in the local directory do not move by themselves: copy them to the bucket
