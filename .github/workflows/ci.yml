@@ -132,7 +132,8 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # WebKit drops the cookies of a frame on another site: it proves the preview cookies.
+      # The WebKit test proves the Partitioned cookies on macOS only. On Linux, WebKit keeps no
+      # cookie of a frame on another site, and the test is an expected failure.
       - run: pnpm --filter genga-example-next exec playwright install --with-deps chromium webkit
       - name: Run the example against the Genga server
         run: |

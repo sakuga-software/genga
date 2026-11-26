@@ -105,11 +105,12 @@ function start(name, command, args, cwd, env) {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });
+  // The Genga server logs a one-time setup link: keep it out of the CI logs.
   const prefix = (chunk) =>
     chunk
       .toString()
       .split('\n')
-      .filter(Boolean)
+      .filter((line) => line && !line.includes('setup?token='))
       .map((line) => `[${name}] ${line}`)
       .join('\n');
   child.stdout.on('data', (chunk) => console.log(prefix(chunk)));

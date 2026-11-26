@@ -189,6 +189,9 @@ test('the editor renews the token through the bridge, also on a page without the
   const renewal = admin.waitForResponse(
     (response) => response.url() === `${SITE}/api/genga/preview` && response.request().method() === 'POST',
   );
+  const refreshAfterRenewal = admin.waitForRequest(
+    (request) => request.url().startsWith(`${SITE}/`) && new URL(request.url()).searchParams.has('_rsc'),
+  );
   // The message that the editor sends before a token expires.
   await frameElement.evaluate(
     (element: HTMLIFrameElement, { documentId, token, site }) =>
@@ -196,6 +199,8 @@ test('the editor renews the token through the bridge, also on a page without the
     { documentId: postId, token: token!, site: SITE },
   );
   expect((await renewal).status()).toBe(204);
+  // After the renewal, the page asks the server again: the draft comes back at once.
+  await refreshAfterRenewal;
 });
 
 test('the entry route refuses a renewal with a bad token', async () => {
