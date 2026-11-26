@@ -15,11 +15,12 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const keep = process.argv.includes('--keep');
+const reactRouterArg = process.argv.find((arg) => arg.startsWith('--react-router'));
+const reactRouterMajor = reactRouterArg === undefined ? '8' : reactRouterArg.split('=')[1];
+if (!['7', '8'].includes(reactRouterMajor)) throw new Error(`--react-router takes 7 or 8, not ${reactRouterMajor}.`);
 const work = mkdtempSync(path.join(tmpdir(), 'genga-pack-'));
 const app = path.join(work, 'app');
 const port = Number(process.env.PORT ?? 3917);
-const reactRouterMajor = process.argv.find((arg) => arg.startsWith('--react-router='))?.split('=')[1] ?? '8';
-if (!['7', '8'].includes(reactRouterMajor)) throw new Error(`--react-router takes 7 or 8, not ${reactRouterMajor}.`);
 
 function run(command, args, cwd) {
   console.log(`$ ${command} ${args.join(' ')}`);
