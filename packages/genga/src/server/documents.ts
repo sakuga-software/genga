@@ -52,6 +52,7 @@ function escapeLike(value: string) {
 
 export function createDocuments(ctx: GengaContext) {
   const { sql } = ctx;
+  const authorLabel = () => sql`COALESCE(NULLIF(btrim(u.name), ''), u.email)`;
 
   function collectionOf(name: string): CollectionConfig {
     if (!Object.hasOwn(ctx.config.collections, name)) throw notFound(`Collection inconnue : ${name}`);
@@ -92,7 +93,7 @@ export function createDocuments(ctx: GengaContext) {
           SELECT d.*, NULL::text AS author_name FROM genga_documents d
           WHERE d.id = ${id} AND d.deleted_at IS NULL FOR UPDATE`
       : await sql<DocumentRow[]>`
-          SELECT d.*, u.name AS author_name FROM genga_documents d
+          SELECT d.*, ${authorLabel()} AS author_name FROM genga_documents d
           LEFT JOIN genga_users u ON u.id = d.created_by
           WHERE d.id = ${id} AND d.deleted_at IS NULL`;
     if (!rows[0]) throw notFound('Document introuvable.');
@@ -125,7 +126,7 @@ export function createDocuments(ctx: GengaContext) {
     const status = options.status ?? 'all';
     const tagFilter = options.tag === undefined ? null : tagCondition(collectionName, collection, options.tag);
     const rows = await sql<DocumentRow[]>`
-      SELECT d.*, u.name AS author_name FROM genga_documents d
+      SELECT d.*, ${authorLabel()} AS author_name FROM genga_documents d
       LEFT JOIN genga_users u ON u.id = d.created_by
       WHERE d.collection = ${collectionName} AND d.deleted_at IS NULL
       ${ownOnly ? sql`AND d.created_by = ${user.id}` : sql``}
@@ -459,7 +460,7 @@ export function createDocuments(ctx: GengaContext) {
     const rows = await sql<
       { id: string; kind: VersionSummary['kind']; note: string | null; created_at: Date; author_name: string | null }[]
     >`
-      SELECT v.id, v.kind, v.note, v.created_at, u.name AS author_name
+      SELECT v.id, v.kind, v.note, v.created_at, ${authorLabel()} AS author_name
       FROM genga_versions v LEFT JOIN genga_users u ON u.id = v.created_by
       WHERE v.document_id = ${id} ORDER BY v.created_at DESC LIMIT 100
     `;
