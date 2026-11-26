@@ -101,6 +101,29 @@ function checkInstalledMajor(name, major) {
   console.log(`ok ${name} ${version}`);
 }
 
+/**
+ * Stops the server and its children. On macOS, react-router-serve can outlive the SIGTERM sent to
+ * `npm run start`, so the script signals the whole process group, then kills what is left.
+ */
+async function stopServer(child, timeoutMs = 5_000) {
+  if (!child?.pid) return;
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+    } catch (error) {
+      if (error.code !== 'ESRCH') throw error;
+    }
+  };
+  if (child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise((resolve) => child.once('exit', resolve));
+    signalGroup('SIGTERM');
+    const timer = setTimeout(() => signalGroup('SIGKILL'), timeoutMs);
+    await exited;
+    clearTimeout(timer);
+  }
+  signalGroup('SIGKILL');
+}
+
 let server;
 try {
   run('pnpm', ['--filter', 'genga', 'pack', '--pack-destination', work], root);
@@ -142,6 +165,7 @@ try {
   server = spawn('npm', ['run', 'start'], {
     cwd: app,
     stdio: 'inherit',
+    detached: true,
     env: { ...process.env, NODE_ENV: 'production', PORT: String(port), SITE_URL: `http://localhost:${port}` },
   });
   const base = `http://localhost:${port}`;
@@ -161,7 +185,7 @@ try {
   }
   console.log(`\nThe packed tarball installs, builds and serves with React Router ${reactRouterMajor}.`);
 } finally {
-  server?.kill('SIGTERM');
+  await stopServer(server);
   if (keep) console.log(`Kept ${work}`);
   else rmSync(work, { recursive: true, force: true });
 }
