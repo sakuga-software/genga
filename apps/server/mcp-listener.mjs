@@ -15,8 +15,14 @@ export async function serveMcp(req, res, server) {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
   if (url.pathname.replace(/\/+$/, '').toLowerCase() !== server.settings.mcp.path.toLowerCase()) return false;
   const headers = new Headers();
-  for (let index = 0; index < req.rawHeaders.length; index += 2) {
-    headers.append(req.rawHeaders[index], req.rawHeaders[index + 1]);
+  try {
+    for (let index = 0; index < req.rawHeaders.length; index += 2) {
+      headers.append(req.rawHeaders[index], req.rawHeaders[index + 1]);
+    }
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Bad Request: a header is not valid.');
+    return true;
   }
   const controller = new AbortController();
   res.on('close', () => controller.abort());

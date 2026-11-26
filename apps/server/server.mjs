@@ -87,7 +87,11 @@ const server = http.createServer(async (req, res) => {
     if (await serveMcp(req, res, await globalThis.__gengaServer)) return;
   } catch (error) {
     console.error('[genga] MCP error:', error);
-    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end('Internal error.');
     return;
   }

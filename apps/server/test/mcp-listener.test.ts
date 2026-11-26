@@ -106,4 +106,21 @@ describe('MCP listener of the headless server', () => {
       mcpEnabled = true;
     }
   });
+
+  it('answers 400 to a header that a Fetch request cannot carry', async () => {
+    const written: { status?: number; body?: string } = {};
+    const req = {
+      method: 'POST',
+      url: '/agents',
+      headers: { host: 'cms.test' },
+      rawHeaders: ['Host', 'cms.test', 'X-Bad', 'a\u0100b'],
+    } as unknown as http.IncomingMessage;
+    const res = {
+      writeHead: (status: number) => (written.status = status),
+      end: (body: string) => (written.body = body),
+    } as unknown as http.ServerResponse;
+    const settings = { mcp: { enabled: true, path: '/agents' } };
+    expect(await serveMcp(req, res, { genga, settings })).toBe(true);
+    expect(written.status).toBe(400);
+  });
 });
