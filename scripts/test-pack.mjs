@@ -84,7 +84,7 @@ function peerRangeOf(major) {
   return range;
 }
 
-function useReactRouter(pkg, major) {
+function pinReactRouter(pkg, major) {
   const range = peerRangeOf(major);
   for (const deps of [pkg.dependencies, pkg.devDependencies]) {
     for (const name of Object.keys(deps)) {
@@ -120,7 +120,7 @@ try {
   const pkgPath = path.join(app, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   pkg.dependencies.genga = `file:../${tarball}`;
-  if (reactRouterMajor !== '8') useReactRouter(pkg, reactRouterMajor);
+  if (reactRouterMajor !== '8') pinReactRouter(pkg, reactRouterMajor);
   writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 
   run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], app);
