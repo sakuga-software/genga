@@ -6,7 +6,8 @@ import type { PublishedDocument } from '../types';
 import type { GengaAuth } from './auth';
 import type { GengaContext } from './context';
 import { loadMediaMap } from './media';
-import { loadRelationResolver } from './relations';
+import { collectRelationIds, type RelationResolver } from '../populate';
+import { loadRelatedDocuments, loadRelationResolver, resolverOf } from './relations';
 
 type PublishedRow = {
   id: string;
@@ -71,12 +72,13 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
     row: PublishedRow,
     versionId: string | null,
     raw: unknown,
+    preloaded?: RelationResolver,
   ): Promise<PublishedDocument<T>> {
     const collection = ctx.config.collections[row.collection];
     const data = tolerantRead(collection.fields, raw, ctx.blocks);
     const [media, resolve] = await Promise.all([
       loadMediaMap(ctx, collection.fields, data),
-      loadRelationResolver(ctx, collection.fields, data),
+      preloaded ?? loadRelationResolver(ctx, collection.fields, data),
     ]);
     return {
       id: row.id,
@@ -115,7 +117,12 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
         FROM genga_documents d JOIN genga_versions v ON v.id = d.published_version_id
         WHERE d.collection = ${collection} AND d.deleted_at IS NULL
       `;
-      const docs = await Promise.all(rows.map((row) => toDocument<T>(row, row.version_id, row.data)));
+      // One query loads the relation targets of the whole list.
+      const refs = rows.flatMap((row) =>
+        collectRelationIds(config.fields, tolerantRead(config.fields, row.data, ctx.blocks), ctx.blocks),
+      );
+      const resolve = resolverOf(await loadRelatedDocuments(ctx, refs));
+      const docs = await Promise.all(rows.map((row) => toDocument<T>(row, row.version_id, row.data, resolve)));
       return docs.sort((a, b) => compareNewestFirst(a, b, config.sortField, config.titleField));
     });
     return options.limit ? all.slice(0, options.limit) : all;

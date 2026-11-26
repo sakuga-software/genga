@@ -401,6 +401,12 @@ components:
         required: { type: boolean }
         to: { type: string, description: 'For a relation field: the collection of the target documents.' }
         multiple: { type: boolean, description: 'For a relation field: a list of documents instead of one.' }
+        maxItems:
+          {
+            type: integer,
+            minimum: 1,
+            description: 'For a relation, tags or array field: the maximum number of items.',
+          }
       additionalProperties: true
     Collection:
       type: object

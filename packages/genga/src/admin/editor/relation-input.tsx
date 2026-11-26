@@ -43,9 +43,22 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
   const [announcement, setAnnouncement] = useState('');
   const labelId = useId();
   const errorId = useId();
-  const error = errors[pathKey(path)];
+  const prefix = pathKey(path);
+  const error = [
+    errors[prefix],
+    ...Object.entries(errors)
+      .filter(([key]) => key.startsWith(`${prefix}.`))
+      .map(([, message]) => message),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const baseId = useId();
+  const groupRef = useRef<HTMLDivElement>(null);
+  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  const [active, setActive] = useState(false);
   const target = schema.collections[field.to];
-  const full = field.multiple ? ids.length >= (field.maxItems ?? 100) : false;
+  const maxItems = field.maxItems ?? 100;
+  const full = field.multiple ? ids.length >= maxItems : false;
   const missingKey = ids.filter((id) => !labels.has(id)).join(',');
   const searchRun = useRef(0);
   // A new key after each choice gives a closed combobox with an empty input, and keeps the focus in it.
@@ -66,7 +79,14 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
           return next;
         });
       },
-      () => {},
+      () => {
+        if (cancelled) return;
+        setLabels((current) => {
+          const next = new Map(current);
+          for (const id of missingKey.split(',')) if (!next.has(id)) next.set(id, null);
+          return next;
+        });
+      },
     );
     return () => {
       cancelled = true;
@@ -74,6 +94,15 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
   }, [field.to, missingKey, rememberRelated]);
 
   useEffect(() => {
+    if (!pendingFocus) return;
+    if (pendingFocus === 'group') groupRef.current?.focus();
+    else document.getElementById(pendingFocus)?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus]);
+
+  // The search starts when the person first reaches the input: a page with many fields loads nothing more.
+  useEffect(() => {
+    if (!active) return;
     const run = (searchRun.current += 1);
     setLoading(true);
     const timer = setTimeout(() => {
@@ -89,10 +118,14 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
       );
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [field.to, search]);
+  }, [active, field.to, search]);
 
   function titleOf(id: string) {
     return labels.get(id)?.title ?? (labels.has(id) ? 'Document indisponible' : 'Chargement…');
+  }
+
+  function buttonId(id: string, action: 'up' | 'down' | 'remove') {
+    return `${baseId}-${id}-${action}`;
   }
 
   function commit(next: string[]) {
@@ -102,15 +135,21 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
   function choose(id: string) {
     const option = options.find((item) => item.id === id);
     if (option) setLabels((current) => new Map(current).set(id, { title: option.title, status: option.status }));
-    commit(field.multiple ? [...ids.filter((item) => item !== id), id] : [id]);
+    const next = field.multiple ? [...ids.filter((item) => item !== id), id] : [id];
+    commit(next);
+    const nowFull = field.multiple && next.length >= maxItems;
     void apiRequest<{ options: RelationOption[] }>(query(field.to, { ids: id })).then(
       (result) => result.options[0]?.related && rememberRelated(result.options[0].related),
       () => {},
     );
     setSearch('');
     setRound((value) => value + 1);
-    setFocusInput(true);
-    setAnnouncement(`${option?.title ?? 'Document'} ajouté.`);
+    // At the maximum, the input goes away: the focus goes to the group of the field.
+    if (nowFull) setPendingFocus('group');
+    else setFocusInput(true);
+    setAnnouncement(
+      `${option?.title ?? 'Document'} ajouté.${nowFull ? ` Maximum de ${maxItems} documents atteint.` : ''}`,
+    );
   }
 
   function remove(id: string) {
@@ -126,13 +165,24 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
     const [item] = next.splice(index, 1);
     next.splice(index + offset, 0, item);
     commit(next);
-    setAnnouncement(`${titleOf(item)} déplacé en position ${index + offset + 1} sur ${next.length}.`);
+    const position = index + offset;
+    // A move to the first or last place disables the pressed button: the focus goes to the other arrow.
+    const pressedDisabled = offset < 0 ? position === 0 : position === next.length - 1;
+    const up = offset < 0 !== pressedDisabled;
+    setPendingFocus(buttonId(item, up ? 'up' : 'down'));
+    setAnnouncement(`${titleOf(item)} déplacé en position ${position + 1} sur ${next.length}.`);
   }
 
   const available = options.filter((option) => option.id !== documentId && !ids.includes(option.id));
 
   return (
-    <div role="group" aria-labelledby={labelId} className="flex flex-col gap-2">
+    <div
+      ref={groupRef}
+      tabIndex={-1}
+      role="group"
+      aria-labelledby={labelId}
+      className="flex flex-col gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-4"
+    >
       <span id={labelId} className="text-sm font-medium">
         {label}
         {field.required && (
@@ -162,6 +212,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
                         isIconOnly
                         size="sm"
                         variant="ghost"
+                        id={buttonId(id, 'up')}
                         aria-label={`Monter ${titleOf(id)}`}
                         isDisabled={index === 0}
                         onPress={() => move(index, -1)}
@@ -172,6 +223,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
                         isIconOnly
                         size="sm"
                         variant="ghost"
+                        id={buttonId(id, 'down')}
                         aria-label={`Descendre ${titleOf(id)}`}
                         isDisabled={index === ids.length - 1}
                         onPress={() => move(index, 1)}
@@ -185,6 +237,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
                       isIconOnly
                       size="sm"
                       variant="ghost"
+                      id={buttonId(id, 'remove')}
                       aria-label={`Retirer ${titleOf(id)}`}
                       onPress={() => remove(id)}
                     >
@@ -198,6 +251,11 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
         </ul>
       )}
 
+      {!readOnly && full && (
+        <p className="text-xs text-[var(--muted)]">
+          Maximum de {maxItems} documents atteint. Retirez-en un pour en choisir un autre.
+        </p>
+      )}
       {!readOnly && !full && (
         <ComboBox
           key={round}
@@ -219,6 +277,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
             <Input
               // oxlint-disable-next-line jsx-a11y/no-autofocus -- the focus stays where the person chose a document.
               autoFocus={focusInput}
+              onFocus={() => setActive(true)}
               onBlur={() => setFocusInput(false)}
               placeholder={`Rechercher ${target ? `dans ${target.label.toLowerCase()}` : 'un document'}…`}
               aria-invalid={Boolean(error) || undefined}

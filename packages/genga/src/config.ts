@@ -68,6 +68,10 @@ export function defineConfig(config: GengaConfig): GengaConfig {
           `Genga: the relation field "${name}" of ${where} points to an unknown collection "${field.to}".`,
         );
       }
+      const { maxItems } = field.type === 'relation' ? field : { maxItems: undefined };
+      if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems > 0)) {
+        throw new Error(`Genga: the relation field "${name}" of ${where} needs a maxItems of 1 or more.`);
+      }
       if (field.type === 'group' || field.type === 'array') checkRelations(field.fields, where);
     }
   };

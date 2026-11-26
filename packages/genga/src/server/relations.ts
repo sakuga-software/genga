@@ -1,11 +1,11 @@
 import { can, isOwnOnly } from '../access';
 import { tolerantRead } from '../fields/schema';
 import type { Fields, RelatedDocument } from '../fields/types';
-import { collectRelationIds, populate, type RelationResolver } from '../populate';
+import { collectMediaIds, collectRelationIds, populate, type RelationResolver } from '../populate';
 import type { DocumentStatus, PublicUser, RelationOption } from '../types';
 import { isUuid } from '../uuid';
 import type { GengaContext } from './context';
-import { loadMediaMap } from './media';
+import { loadMediaByIds } from './media';
 
 const OPTION_LIMIT = 20;
 
@@ -40,26 +40,48 @@ export async function loadRelatedDocuments(
     FROM genga_documents d JOIN genga_versions v ON v.id = d.published_version_id
     WHERE d.id = ANY(${[...new Set(wanted.map((ref) => ref.id))]}::uuid[]) AND d.deleted_at IS NULL
   `;
+  const targets = rows.flatMap((row) => {
+    const collection = Object.hasOwn(ctx.config.collections, row.collection)
+      ? ctx.config.collections[row.collection]
+      : undefined;
+    return collection ? [{ row, collection, data: tolerantRead(collection.fields, row.data, ctx.blocks) }] : [];
+  });
+  const nested = targets.flatMap((target) => collectRelationIds(target.collection.fields, target.data, ctx.blocks));
+  const [media, live] = await Promise.all([
+    loadMediaByIds(
+      ctx,
+      targets.flatMap((target) => collectMediaIds(target.collection.fields, target.data, ctx.blocks)),
+    ),
+    publishedKeys(ctx, nested),
+  ]);
+  // The relations of a target stay references: one level only, so a cycle cannot loop. A reference
+  // to a document that is not live is left out, so the id of a draft stays private.
+  const reference: RelationResolver = (field, id) =>
+    live.has(key(field.to, id)) ? { id, collection: field.to } : null;
   const result = new Map<string, RelatedDocument>();
-  await Promise.all(
-    rows.map(async (row) => {
-      const collection = ctx.config.collections[row.collection];
-      if (!collection) return;
-      const data = tolerantRead(collection.fields, row.data, ctx.blocks);
-      const media = await loadMediaMap(ctx, collection.fields, data);
-      result.set(key(row.collection, row.id), {
-        id: row.id,
-        collection: row.collection,
-        slug: row.slug,
-        path: collection.path(row.slug),
-        title: String(data[collection.titleField] ?? ''),
-        publishedAt: row.published_at?.toISOString() ?? null,
-        // The relations of a target stay references: one level only, and no cycle.
-        data: populate(collection.fields, data, ctx.blocks, media),
-      });
-    }),
-  );
+  for (const { row, collection, data } of targets) {
+    result.set(key(row.collection, row.id), {
+      id: row.id,
+      collection: row.collection,
+      slug: row.slug,
+      path: collection.path(row.slug),
+      title: String(data[collection.titleField] ?? ''),
+      publishedAt: row.published_at?.toISOString() ?? null,
+      data: populate(collection.fields, data, ctx.blocks, media, reference),
+    });
+  }
   return result;
+}
+
+/** The keys of the documents among `refs` that are live, in their collection. */
+async function publishedKeys(ctx: GengaContext, refs: { id: string; collection: string }[]): Promise<Set<string>> {
+  const ids = [...new Set(refs.map((ref) => ref.id).filter(isUuid))];
+  if (!ids.length) return new Set();
+  const rows = await ctx.sql<{ id: string; collection: string }[]>`
+    SELECT id, collection FROM genga_documents
+    WHERE id = ANY(${ids}::uuid[]) AND deleted_at IS NULL AND published_version_id IS NOT NULL
+  `;
+  return new Set(rows.map((row) => key(row.collection, row.id)));
 }
 
 export function resolverOf(related: ReadonlyMap<string, RelatedDocument>): RelationResolver {
@@ -138,7 +160,7 @@ export async function relationOptions(
             )`
           : sql``
       }
-    ORDER BY d.draft_updated_at DESC, d.id
+    ORDER BY d.published_at DESC NULLS FIRST, d.id
     LIMIT ${ids ? Math.min(ids.length, 200) : OPTION_LIMIT}
   `;
   const related = ids

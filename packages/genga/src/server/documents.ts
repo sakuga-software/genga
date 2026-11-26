@@ -332,11 +332,13 @@ export function createDocuments(ctx: GengaContext) {
         }
       }
 
+      // No lock on the targets: two documents that point to each other would deadlock at publish.
+      // A target deleted after this check resolves to nothing on the site.
       const relationRefs = collectRelationIds(collection.fields, checked.data, ctx.blocks);
       if (relationRefs.length) {
         const found = await tx<{ id: string; collection: string }[]>`
           SELECT id, collection FROM genga_documents
-          WHERE id = ANY(${[...new Set(relationRefs.map((ref) => ref.id))]}::uuid[]) AND deleted_at IS NULL FOR SHARE
+          WHERE id = ANY(${[...new Set(relationRefs.map((ref) => ref.id))]}::uuid[]) AND deleted_at IS NULL
         `;
         const present = new Set(found.map((target) => `${target.collection}\u0000${target.id}`));
         const missing = relationRefs.filter((ref) => !present.has(`${ref.collection}\u0000${ref.id}`));

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defineConfig, media, relation, slug, text } from '../src';
+import { tolerantRead } from '../src/fields/schema';
 import { createGenga, type Genga } from '../src/server';
 import type { PublicUser } from '../src/types';
 import { TEST_URL } from './global-setup';
@@ -120,6 +121,26 @@ describe('relation fields', () => {
     await edit(post, { author: hidden });
     const preview = await genga.published.draft<{ author: unknown }>(post);
     expect(preview?.data.author).toBeNull();
+  });
+
+  it('leaves out a nested reference to a document that is not live, so its id stays private', async () => {
+    await setup();
+    const { id: hidden } = await genga.documents.create(editor, 'authors', { name: 'Brouillon' });
+    const ada = await createPublished('authors', { name: 'Ada', mentor: hidden });
+    await createPublished('posts', { title: 'Hello', author: ada });
+    const doc = await genga.published.find<{ author: { data: { mentor: unknown } } }>('posts', 'hello');
+    expect(doc?.data.author.data.mentor).toBeNull();
+    expect(JSON.stringify(doc)).not.toContain(hidden);
+  });
+
+  it('keeps the links when the config changes between single and multiple, or lowers maxItems', async () => {
+    await setup();
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const read = (field: Parameters<typeof relation>[0], value: unknown) =>
+      tolerantRead({ link: relation(field) }, { link: value }, {}).link;
+    expect(read({ to: 'posts', multiple: true }, ids[0])).toEqual([ids[0]]);
+    expect(read({ to: 'posts' }, ids)).toBe(ids[0]);
+    expect(read({ to: 'posts', multiple: true, maxItems: 2 }, [...ids, ids[0], 'bad'])).toEqual(ids.slice(0, 2));
   });
 
   it('gives the previewed draft the published targets, not their drafts', async () => {

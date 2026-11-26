@@ -76,9 +76,14 @@ export async function loadMediaMap(
   fields: Fields,
   data: unknown,
 ): Promise<Map<string, MediaObject>> {
-  const ids = collectMediaIds(fields, data, ctx.blocks).filter(isUuid);
-  if (!ids.length) return new Map();
-  const rows = await ctx.sql<MediaRow[]>`SELECT * FROM genga_media WHERE id = ANY(${ids}::uuid[])`;
+  return loadMediaByIds(ctx, collectMediaIds(fields, data, ctx.blocks));
+}
+
+/** The media objects of these ids, in one query. Unknown ids are missing from the map. */
+export async function loadMediaByIds(ctx: GengaContext, ids: string[]): Promise<Map<string, MediaObject>> {
+  const wanted = [...new Set(ids.filter(isUuid))];
+  if (!wanted.length) return new Map();
+  const rows = await ctx.sql<MediaRow[]>`SELECT * FROM genga_media WHERE id = ANY(${wanted}::uuid[])`;
   return new Map(rows.map((row) => [row.id, toMediaObject(row, mediaBase(ctx))]));
 }
 

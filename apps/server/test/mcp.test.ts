@@ -92,7 +92,7 @@ describe('MCP endpoint of the headless server', () => {
     );
     try {
       const { tools } = await client.listTools();
-      expect(tools.length).toBe(13);
+      expect(tools.length).toBe(14);
 
       const created = (await client.callTool({
         name: 'create_document',
