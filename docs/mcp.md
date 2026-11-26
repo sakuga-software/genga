@@ -15,10 +15,11 @@ admin, with the same validation, the same access rules and an entry in the audit
 
 The [headless server](./headless-server.md) serves MCP at `/mcp` by default.
 
-| Variable         | Default | Purpose                                                                       |
-| ---------------- | ------- | ----------------------------------------------------------------------------- |
-| `GENGA_MCP`      | `on`    | `off` turns the endpoint off: its path answers like any unknown path.         |
-| `GENGA_MCP_PATH` | `/mcp`  | One path segment. It cannot be the admin path or a path that the server uses. |
+| Variable                 | Default  | Purpose                                                                       |
+| ------------------------ | -------- | ----------------------------------------------------------------------------- |
+| `GENGA_MCP`              | `on`     | `off` turns the endpoint off: its path answers like any unknown path.         |
+| `GENGA_MCP_PATH`         | `/mcp`   | One path segment. It cannot be the admin path or a path that the server uses. |
+| `GENGA_MCP_UPLOAD_PORTS` | `80,443` | The ports that `upload_media` with a `url` can download from.                 |
 
 The endpoint URL is `GENGA_PUBLIC_URL` plus the path, for example
 `https://cms.example.com/mcp`.
@@ -238,11 +239,12 @@ publish only when a human asks.
   `document.restore`, `media.upload` and `media.update`. Token creation and revocation add
   `token.create` and `token.revoke`.
 - **Remote media (`upload_media` with `url`).** The server downloads the file with these rules:
-  only `http` and `https`, no credentials in the URL; every address of the host must be
+  only `http` and `https`, no credentials in the URL; only ports 80 and 443 (the `uploadPorts`
+  option of `mcp` changes the list); every address of the host must be
   public (private, loopback, link-local, shared, multicast and reserved ranges are refused,
   for IPv4, IPv6 and IPv6 forms that embed an IPv4 address); the socket connects to the
   address that passed the check, so DNS rebinding cannot change it; each redirect is checked
-  again, up to 3; the connection of a redirect or an error closes at once; the download
+  again, its port too, up to 3; the connection of a redirect or an error closes at once; the download
   stops at the upload size limit and after 15 seconds; one token runs 3 downloads at most at
   the same time. A host without a public address gives one error, whatever the reason, so the
   error tells nothing about the internal network. The file

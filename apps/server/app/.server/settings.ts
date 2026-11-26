@@ -22,8 +22,8 @@ export type Settings = {
   port: number;
   /** Requests per minute and per client address on the public API. */
   rateLimit: number;
-  /** The MCP endpoint: on by default at `/mcp`. */
-  mcp: { enabled: boolean; path: string };
+  /** The MCP endpoint: on by default at `/mcp`. `uploadPorts` is null for the default of genga. */
+  mcp: { enabled: boolean; path: string; uploadPorts: number[] | null };
 };
 
 export class SettingsError extends Error {
@@ -55,6 +55,20 @@ function origins(value: string | undefined, name: string, problems: string[]): s
     problems.push((error as Error).message.replace(/^Genga: /, ''));
     return [];
   }
+}
+
+function ports(value: string | undefined, name: string, problems: string[]): number[] | null {
+  if (value === undefined || value.trim() === '') return null;
+  const parts = value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const parsed = parts.map(Number);
+  if (!parts.length || parts.some((part, index) => !/^\d+$/.test(part) || parsed[index] < 1 || parsed[index] > 65535)) {
+    problems.push(`${name} must be a comma-separated list of ports from 1 to 65535, not "${value}".`);
+    return null;
+  }
+  return parsed;
 }
 
 /** Reads and checks the environment. Throws a `SettingsError` that lists every problem. */
@@ -137,7 +151,11 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     secret,
     port,
     rateLimit: integer(env.GENGA_RATE_LIMIT, 300, 'GENGA_RATE_LIMIT', problems, 1),
-    mcp: { enabled: !['off', 'false', '0'].includes(mcpSwitch), path: mcpPath },
+    mcp: {
+      enabled: !['off', 'false', '0'].includes(mcpSwitch),
+      path: mcpPath,
+      uploadPorts: ports(env.GENGA_MCP_UPLOAD_PORTS, 'GENGA_MCP_UPLOAD_PORTS', problems),
+    },
   };
   if (problems.length) throw new SettingsError(problems);
   return settings;

@@ -41,6 +41,9 @@ All notable changes to the `genga` package. The format follows
 
 ### Changed
 
+- MCP `upload_media` with a `url` downloads only from ports 80 and 443, for the URL and each
+  redirect. The `uploadPorts` option of `mcp` (`GENGA_MCP_UPLOAD_PORTS` on the server image)
+  changes the list.
 - Preview responses (`PREVIEW_HEADERS`, `loadForRoute`) also send `Referrer-Policy: no-referrer`
   and `X-Robots-Tag: noindex`.
 
@@ -48,6 +51,11 @@ All notable changes to the `genga` package. The format follows
 
 - `genga.api`, `genga.mcp` and `genga.media.serve`: use `genga.handle`. Each logs one warning
   per process. They leave at 1.0.
+
+### Fixed
+
+- The admin showed « Inconnu » or « — » as the author when the account had no name. It now
+  shows the email of the account, also when the account is disabled (GNG-9).
 
 ## [0.2.0] - 2026-11-24
 

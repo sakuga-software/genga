@@ -49,9 +49,14 @@ jobs:
       - run: pnpm typecheck
 
   test:
-    name: Tests (Postgres) and packed tarball
+    # The React Router 8 leg keeps the name of the required check of the ruleset.
+    name: ${{ matrix.react-router == '8' && 'Tests (Postgres) and packed tarball' || format('Packed tarball (React Router {0})', matrix.react-router) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        react-router: ['8', '7']
     services:
       postgres:
         image: postgres:18
@@ -80,5 +85,6 @@ jobs:
           echo "GENGA_TEST_ADMIN_URL=$base/genga" >> "$GITHUB_ENV"
           echo "GENGA_TEST_DATABASE_URL=$base/genga_test" >> "$GITHUB_ENV"
           echo "DATABASE_URL=$base/genga" >> "$GITHUB_ENV"
-      - run: pnpm test
-      - run: pnpm test:pack
+      - if: matrix.react-router == '8'
+        run: pnpm test
+      - run: pnpm test:pack --react-router=${{ matrix.react-router }}
