@@ -10,7 +10,8 @@
     "format:fix": "oxfmt .",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
-    "test:pack": "node scripts/test-pack.mjs"
+    "test:pack": "node scripts/test-pack.mjs",
+    "test:e2e": "node examples/next/e2e/run.mjs"
   },
   "devDependencies": {
     "oxfmt": "^0.79.0",

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Proves that the published shape of `genga` works: it packs the library, installs the
 // tarball into a copy of examples/react-router outside the workspace, builds the copy,
-// runs `genga-migrate`, starts the production server and checks a few pages.
+// runs `genga-migrate`, starts the production server and checks a few pages. Then it packs
+// `@genga-cms/next` and builds a copy of examples/next with both tarballs.
 //
 // Usage: DATABASE_URL=postgres://… node scripts/test-pack.mjs [--keep] [--react-router=7|8]
 // Without DATABASE_URL, the script checks the build and the pages of a site with the CMS off.
@@ -124,27 +125,50 @@ async function stopServer(child, timeoutMs = 5_000) {
   signalGroup('SIGKILL');
 }
 
+/** Copies an example out of the workspace, with its dependencies on the tarballs. */
+function copyExample(name, target, dependencies, adjust = () => {}) {
+  cpSync(path.join(root, 'examples', name), target, {
+    recursive: true,
+    filter: (source) => !/[\\/](node_modules|build|\.react-router|\.next|data|test-results)([\\/]|$)/.test(source),
+  });
+  // Turbopack reads no file outside the project: the copy gets its own base config.
+  cpSync(path.join(root, 'tsconfig.base.json'), path.join(target, 'tsconfig.base.json'));
+  const tsconfigPath = path.join(target, 'tsconfig.json');
+  writeFileSync(
+    tsconfigPath,
+    readFileSync(tsconfigPath, 'utf8').replace('../../tsconfig.base.json', './tsconfig.base.json'),
+  );
+  const pkgPath = path.join(target, 'package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  Object.assign(pkg.dependencies, dependencies);
+  adjust(pkg);
+  writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+}
+
+/** Fails when the packed `@genga-cms/next` leaves a workspace range or loses its client boundary. */
+function checkNextPackage(dir) {
+  const pkg = JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  if (pkg.peerDependencies.genga !== `~${pkg.version}`) {
+    throw new Error(`@genga-cms/next has the peer genga "${pkg.peerDependencies.genga}", not "~${pkg.version}".`);
+  }
+  if (!readFileSync(path.join(dir, 'dist/client.mjs'), 'utf8').startsWith('"use client"')) {
+    throw new Error('dist/client.mjs of @genga-cms/next does not start with "use client".');
+  }
+  if (!/from "\.\/client\.mjs"/.test(readFileSync(path.join(dir, 'dist/index.mjs'), 'utf8'))) {
+    throw new Error('dist/index.mjs of @genga-cms/next does not import the client components from ./client.mjs.');
+  }
+  console.log('ok @genga-cms/next keeps its client boundary and a lockstep peer range');
+}
+
 let server;
 try {
   run('pnpm', ['--filter', 'genga', 'pack', '--pack-destination', work], root);
-  const tarball = readdirSync(work).find((name) => name.endsWith('.tgz'));
+  const tarball = readdirSync(work).find((name) => /^genga-\d.*\.tgz$/.test(name));
   if (!tarball) throw new Error('pnpm pack wrote no tarball.');
 
-  cpSync(path.join(root, 'examples/react-router'), app, {
-    recursive: true,
-    filter: (source) => !/[\\/](node_modules|build|\.react-router|data)([\\/]|$)/.test(source),
+  copyExample('react-router', app, { genga: `file:../${tarball}` }, (pkg) => {
+    if (reactRouterMajor !== '8') pinReactRouter(pkg, reactRouterMajor);
   });
-  cpSync(path.join(root, 'tsconfig.base.json'), path.join(work, 'tsconfig.base.json'));
-  const tsconfigPath = path.join(app, 'tsconfig.json');
-  writeFileSync(
-    tsconfigPath,
-    readFileSync(tsconfigPath, 'utf8').replace('../../tsconfig.base.json', '../tsconfig.base.json'),
-  );
-  const pkgPath = path.join(app, 'package.json');
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-  pkg.dependencies.genga = `file:../${tarball}`;
-  if (reactRouterMajor !== '8') pinReactRouter(pkg, reactRouterMajor);
-  writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 
   run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], app);
   for (const name of ['react-router', '@react-router/dev', '@react-router/serve']) {
@@ -184,6 +208,27 @@ try {
     await expectStatus(`${base}/admin/login`, 503);
   }
   console.log(`\nThe packed tarball installs, builds and serves with React Router ${reactRouterMajor}.`);
+  await stopServer(server);
+  server = undefined;
+
+  run('pnpm', ['--filter', '@genga-cms/next', 'pack', '--pack-destination', work], root);
+  const nextTarball = readdirSync(work).find((name) => /^genga-cms-next-\d.*\.tgz$/.test(name));
+  if (!nextTarball) throw new Error('pnpm pack wrote no tarball of @genga-cms/next.');
+  const nextApp = path.join(work, 'next');
+  copyExample('next', nextApp, { genga: `file:../${tarball}`, '@genga-cms/next': `file:../${nextTarball}` });
+  run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], nextApp);
+  checkNextPackage(path.join(nextApp, 'node_modules/@genga-cms/next'));
+  run('npm', ['run', 'typecheck'], nextApp);
+  // The build reads no content: the pages render at their first request.
+  const build = execFileSync('npm', ['run', 'build'], {
+    cwd: nextApp,
+    encoding: 'utf8',
+    env: { ...process.env, CI: '1', GENGA_URL: 'http://localhost:1' },
+  });
+  console.log(build);
+  if (!/● \/blog\/\[slug\]/.test(build))
+    throw new Error('The Next.js example does not build /blog/[slug] as a static route.');
+  console.log('\nThe packed @genga-cms/next installs and builds the Next.js example.');
 } finally {
   await stopServer(server);
   if (keep) console.log(`Kept ${work}`);

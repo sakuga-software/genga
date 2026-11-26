@@ -104,3 +104,45 @@ jobs:
       - if: matrix.react-router == '8'
         run: pnpm test
       - run: pnpm test:pack --react-router=${{ matrix.react-router }}
+
+  e2e-next:
+    name: End-to-end, Next.js example (remote mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: genga
+          POSTGRES_PASSWORD: genga
+          POSTGRES_DB: genga_e2e
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "pg_isready -U genga"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The pnpm installer needs Node: set up Node first.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # WebKit drops the cookies of a frame on another site: it proves the preview cookies.
+      - run: pnpm --filter genga-example-next exec playwright install --with-deps chromium webkit
+      - name: Run the example against the Genga server
+        run: |
+          export E2E_DATABASE_URL="postgres://genga:genga@localhost:${{ job.services.postgres.ports['5432'] }}/genga_e2e"
+          pnpm test:e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: e2e-next-report
+          path: |
+            examples/next/playwright-report
+            examples/next/test-results
+          retention-days: 7
