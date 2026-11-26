@@ -227,6 +227,7 @@ CREATE TABLE genga_oauth_codes (
   resource text NOT NULL,
   expires_at timestamptz NOT NULL,
   used_at timestamptz,
+  replayed_at timestamptz,
   grant_id uuid REFERENCES genga_oauth_grants (id) ON DELETE CASCADE
 );
 CREATE INDEX genga_oauth_codes_expires_idx ON genga_oauth_codes (expires_at);
@@ -235,6 +236,7 @@ CREATE TABLE genga_oauth_tokens (
   token_hash text PRIMARY KEY,
   grant_id uuid NOT NULL REFERENCES genga_oauth_grants (id) ON DELETE CASCADE,
   kind text NOT NULL CHECK (kind IN ('access', 'refresh')),
+  scopes text[] NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
   used_at timestamptz

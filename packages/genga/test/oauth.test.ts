@@ -73,6 +73,7 @@ describe('OAuth for the MCP server', () => {
   const ctx = useGenga();
   let genga: Genga;
   let metadataDocument: Record<string, unknown>;
+  let metadataFetches = 0;
   const clients: Client[] = [];
 
   beforeAll(async () => {
@@ -85,6 +86,7 @@ describe('OAuth for the MCP server', () => {
       mcp: {
         oauth: {
           fetchClientMetadata: async (url) => {
+            metadataFetches += 1;
             if (url !== METADATA_URL) throw new Error('unknown document');
             return {
               body: Buffer.from(JSON.stringify(metadataDocument)),
@@ -206,17 +208,17 @@ describe('OAuth for the MCP server', () => {
       expect(bad.headers.get('www-authenticate')).toContain('error="invalid_token"');
     });
 
-    it('serves the protected resource metadata at the path and at the root', async () => {
-      for (const path of ['/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-protected-resource']) {
-        const response = await fetchFn(`${SITE}${path}`);
-        expect(response.status).toBe(200);
-        expect(response.headers.get('access-control-allow-origin')).toBe('*');
-        expect(await response.json()).toMatchObject({
-          resource: MCP_URL,
-          authorization_servers: [SITE],
-          scopes_supported: ['read', 'write'],
-        });
-      }
+    it('serves the protected resource metadata at the path of the endpoint only', async () => {
+      const response = await fetchFn(`${SITE}/.well-known/oauth-protected-resource/mcp`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBe('*');
+      expect(await response.json()).toMatchObject({
+        resource: MCP_URL,
+        authorization_servers: [SITE],
+        scopes_supported: ['read', 'write'],
+      });
+      // RFC 9728: the document at the root would describe the origin, which is not a resource here.
+      expect(await genga.handle(request('/.well-known/oauth-protected-resource'))).toBeNull();
     });
 
     it('serves the authorization server metadata with PKCE, CIMD and iss', async () => {
@@ -315,7 +317,7 @@ describe('OAuth for the MCP server', () => {
       expect(provider.info?.client_id).toBe(METADATA_URL);
       const [grant] = await oauth().listGrants(editor);
       expect(grant).toMatchObject({ clientName: 'Metadata client', clientHost: 'client.example' });
-      expect((await mcpPost(provider.saved?.access_token ?? '')).status).toBe(200);
+      expect((await mcpPost(provider.tokens()?.access_token ?? '')).status).toBe(200);
     });
 
     it('refuses a metadata document whose client_id is not its URL', async () => {
@@ -331,9 +333,10 @@ describe('OAuth for the MCP server', () => {
     });
 
     it('sends a person without a session to the login page, and keeps the request in next', async () => {
-      const provider = new MemoryProvider();
+      const provider = new MemoryProvider(CALLBACK, METADATA_URL);
       await auth(provider, { serverUrl: MCP_URL, fetchFn });
       const url = provider.authorizationUrl as URL;
+      const fetches = metadataFetches;
       const thrown = await genga.admin
         .oauthAuthorizeLoader(request(`${url.pathname}${url.search}`))
         .catch((error) => error);
@@ -341,6 +344,7 @@ describe('OAuth for the MCP server', () => {
       const location = new URL((thrown as Response).headers.get('location') ?? '', SITE);
       expect(location.pathname).toBe('/admin/login');
       expect(location.searchParams.get('next')).toBe(`${url.pathname}${url.search}`);
+      expect(metadataFetches).toBe(fetches);
     });
 
     it('sends access_denied when the person refuses', async () => {
@@ -431,7 +435,7 @@ describe('OAuth for the MCP server', () => {
       expect(page).toMatchObject({ valid: true, nativeRedirect: true, redirectTarget: 'http://127.0.0.1:51234' });
     });
 
-    it('sends the other errors to the client: no PKCE, plain PKCE, another resource, unknown scopes', async () => {
+    it('gives the other errors as a page with a link back to the client, never as a redirect', async () => {
       const editor = await createUser(genga, 'editor');
       const { client_id } = await registered();
       const cases: [Record<string, string>, string][] = [
@@ -443,10 +447,11 @@ describe('OAuth for the MCP server', () => {
       ];
       for (const [extra, error] of cases) {
         const result = await load(editor, authorizeQuery(client_id, extra).url);
-        expect(result).toBeInstanceOf(URL);
-        expect((result as URL).searchParams.get('error')).toBe(error);
-        expect((result as URL).searchParams.get('state')).toBe('xyz');
-        expect((result as URL).searchParams.get('iss')).toBe(SITE);
+        expect(result).toMatchObject({ valid: false });
+        const back = new URL((result as { returnUrl: string }).returnUrl);
+        expect(back.searchParams.get('error')).toBe(error);
+        expect(back.searchParams.get('state')).toBe('xyz');
+        expect(back.searchParams.get('iss')).toBe(SITE);
       }
     });
 
@@ -510,10 +515,49 @@ describe('OAuth for the MCP server', () => {
       });
       expect(await wider.json()).toMatchObject({ error: 'invalid_scope' });
 
+      // Within 30 seconds, a second use is a concurrent refresh of the same client: an error, and the grant stays.
+      const concurrent = await tokenRequest({ grant_type: 'refresh_token', client_id, refresh_token: first });
+      expect(concurrent.status).toBe(400);
+      expect((await mcpPost(next.access_token)).status).toBe(200);
+
+      await genga.sql`UPDATE genga_oauth_tokens SET used_at = now() - interval '1 minute' WHERE used_at IS NOT NULL`;
       const reused = await tokenRequest({ grant_type: 'refresh_token', client_id, refresh_token: first });
       expect(reused.status).toBe(400);
       expect((await mcpPost(next.access_token)).status).toBe(401);
       expect(await oauth().listGrants(editor)).toEqual([]);
+    });
+
+    it('gives an access token with fewer scopes when a refresh asks for fewer', async () => {
+      const editor = await createUser(genga, 'editor');
+      const provider = await connect(editor);
+      const response = await tokenRequest({
+        grant_type: 'refresh_token',
+        client_id: provider.info?.client_id as string,
+        refresh_token: provider.saved?.refresh_token as string,
+        scope: 'read',
+      });
+      const narrow = (await response.json()) as { access_token: string; refresh_token: string; scope: string };
+      expect(narrow.scope).toBe('read');
+      provider.saved = { ...narrow, token_type: 'Bearer' };
+      const client = await mcpClient(provider);
+      const result = (await client.callTool({
+        name: 'create_document',
+        arguments: { collection: 'journal', data: { title: 'Non' } },
+      })) as CallToolResult;
+      expect(result.isError).toBe(true);
+      const [grant] = await oauth().listGrants(editor);
+      expect(grant.scopes).toEqual(['read', 'write']);
+    });
+
+    it('replaces the grant when the same person approves the same client again', async () => {
+      const editor = await createUser(genga, 'editor');
+      const provider = await connect(editor);
+      const first = provider.saved?.access_token as string;
+      provider.saved = undefined;
+      await connect(editor, provider);
+      expect(await oauth().listGrants(editor)).toHaveLength(1);
+      expect((await mcpPost(first)).status).toBe(401);
+      expect((await mcpPost(provider.tokens()?.access_token ?? '')).status).toBe(200);
     });
 
     it('authenticates a confidential client with client_secret_basic', async () => {

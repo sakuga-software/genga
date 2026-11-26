@@ -131,15 +131,17 @@ export function createAdmin({ ctx, auth, documents, media, users, tokens, oauth 
     };
   }
 
-  /** Checks the authorization request in the URL. A client error page returns; an error for the client redirects. */
+  /** Checks the authorization request in the URL. An error gives the page that explains it. */
   async function checkAuthorization(
     request: Request,
   ): Promise<{ ok: true; value: AuthorizeRequest; query: string } | { ok: false; page: OAuthConsentPageData }> {
     const url = new URL(request.url);
     const check = await requireOAuth().checkAuthorize(url.searchParams);
     if (check.ok) return { ok: true, value: check.request, query: url.search.slice(1) };
-    if ('redirect' in check) throw redirect(check.redirect, { headers: ADMIN_HEADERS });
-    return { ok: false, page: { adminPath: ctx.adminPath, valid: false, message: check.page } };
+    return {
+      ok: false,
+      page: { adminPath: ctx.adminPath, valid: false, message: check.page, returnUrl: check.returnUrl },
+    };
   }
 
   return {
@@ -228,18 +230,21 @@ export function createAdmin({ ctx, auth, documents, media, users, tokens, oauth 
 
     /** The consent screen of an MCP client (OAuth authorization endpoint). It needs a session. */
     async oauthAuthorizeLoader(request: Request): Promise<OAuthConsentPageData> {
+      requireOAuth();
+      // The session comes first: without it, the page reads no client and downloads no metadata document.
+      const user = await requireUser(request);
       const checked = await checkAuthorization(request);
       if (!checked.ok) return checked.page;
-      const user = await requireUser(request);
       return consentData(user, checked.value, checked.query, null);
     },
 
     /** The answer of the consent screen: a redirect to the client, with a code or `access_denied`. */
     async oauthAuthorizeAction(request: Request): Promise<OAuthConsentPageData> {
+      requireOAuth();
       checkOrigin(request);
+      const user = await requireUser(request);
       const checked = await checkAuthorization(request);
       if (!checked.ok) return checked.page;
-      const user = await requireUser(request);
       const form = await readForm(request, AUTH_FORM_BYTES);
       const allow = form.get('decision') === 'allow';
       const scopes = form.getAll('scope').filter(isApiScope);

@@ -173,7 +173,12 @@ export type OAuthConsentPageData = { adminPath: string } & (
       query: string;
       error: string | null;
     }
-  | { valid: false; message: string }
+  | {
+      valid: false;
+      message: string;
+      /** The redirect URI of the client with the error, when the client is valid. The page shows it as a link. */
+      returnUrl: string | null;
+    }
 );
 
 export type SetupPageData = { adminPath: string } & (

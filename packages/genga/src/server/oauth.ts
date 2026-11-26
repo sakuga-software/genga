@@ -5,6 +5,7 @@ import { isUuid } from '../uuid';
 import { bearerToken, isApiScope, type GengaApiTokens, type TokenAuth } from './api-tokens';
 import { audit, clientAddress, hashToken, toPublicUser } from './auth';
 import { readBody } from './body';
+import type { Sql, TransactionSql } from 'postgres';
 import type { GengaContext } from './context';
 import { GengaError, notFound } from './errors';
 import { originOf } from './origin';
@@ -76,10 +77,12 @@ export type AuthorizeRequest = {
 
 export type AuthorizeCheck =
   | { ok: true; request: AuthorizeRequest }
-  /** The client or the redirect URI is not valid: show an error page, never redirect. */
-  | { ok: false; page: string }
-  /** Any other error goes back to the client, on its redirect URI. */
-  | { ok: false; redirect: string };
+  /**
+   * The request is not valid. `returnUrl` carries the error to the client when the client and its
+   * redirect URI are valid. Genga shows it as a link, never as an automatic redirect: anybody can
+   * register a client, so a redirect URI is not a trusted destination.
+   */
+  | { ok: false; page: string; returnUrl: string | null };
 
 class OAuthError extends Error {
   constructor(
@@ -108,6 +111,9 @@ function pkceChallenge(verifier: string): string {
 function isLoopbackHttp(url: URL): boolean {
   return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
 }
+
+/** A client that refreshes twice at the same time gets an error, but keeps its grant, in this delay. */
+const REFRESH_REUSE_GRACE_MS = 30_000;
 
 /** A redirect URI that a client can register: https, http on a loopback host, or a private-use scheme. */
 export function checkRedirectUri(value: unknown): string | null {
@@ -327,10 +333,7 @@ export function createOAuth(
   function wellKnown(request: Request, pathname: string): Response | null {
     const path = pathname.replace(/\/+$/, '').toLowerCase();
     let body: unknown;
-    if (
-      path === '/.well-known/oauth-protected-resource' ||
-      path === `/.well-known/oauth-protected-resource${mcpPath}`.toLowerCase()
-    ) {
+    if (path === `/.well-known/oauth-protected-resource${mcpPath}`.toLowerCase()) {
       body = protectedResourceMetadata();
     } else if (path === '/.well-known/oauth-authorization-server') {
       body = authorizationServerMetadata();
@@ -355,7 +358,6 @@ export function createOAuth(
   function isWellKnownPath(pathname: string): boolean {
     const path = pathname.replace(/\/+$/, '').toLowerCase();
     return (
-      path === '/.well-known/oauth-protected-resource' ||
       path === `/.well-known/oauth-protected-resource${mcpPath}`.toLowerCase() ||
       path === '/.well-known/oauth-authorization-server'
     );
@@ -388,6 +390,11 @@ export function createOAuth(
       typeof document.client_uri === 'string' && checkRedirectUri(document.client_uri)?.startsWith('https://')
         ? document.client_uri
         : null;
+    await sql`
+      DELETE FROM genga_oauth_clients c
+      WHERE c.kind = 'metadata' AND c.fresh_until < ${new Date(Date.now() - UNUSED_CLIENT_TTL_MS)}
+        AND NOT EXISTS (SELECT 1 FROM genga_oauth_grants g WHERE g.client_id = c.id AND g.revoked_at IS NULL)
+    `;
     const [row] = await sql<ClientRow[]>`
       INSERT INTO genga_oauth_clients (id, kind, name, client_uri, redirect_uris, auth_method, fresh_until)
       VALUES (${clientId}, 'metadata', ${name}, ${clientUri}, ${redirectUris as string[]}, 'none',
@@ -418,43 +425,53 @@ export function createOAuth(
   async function checkAuthorize(params: URLSearchParams): Promise<AuthorizeCheck> {
     const single = (name: string) => (params.getAll(name).length > 1 ? undefined : params.get(name));
     const clientId = single('client_id');
-    if (!clientId) return { ok: false, page: 'La demande ne nomme pas d’application (client_id).' };
+    const page = (message: string): AuthorizeCheck => ({ ok: false, page: message, returnUrl: null });
+    if (!clientId) return page('La demande ne nomme pas d’application (client_id).');
     const row = await findClient(clientId, { refresh: true });
     if (!row) {
-      return {
-        ok: false,
-        page: 'Genga ne connaît pas cette application, ou ne peut pas lire sa description. Relancez la connexion depuis l’application.',
-      };
+      return page(
+        'Genga ne connaît pas cette application, ou ne peut pas lire sa description. Relancez la connexion depuis l’application.',
+      );
     }
     const requestedUri = single('redirect_uri');
     let redirectUri: string;
-    if (requestedUri === undefined) return { ok: false, page: 'La demande contient plusieurs adresses de retour.' };
+    if (requestedUri === undefined) return page('La demande contient plusieurs adresses de retour.');
     if (requestedUri === null) {
-      if (row.redirect_uris.length !== 1) return { ok: false, page: 'La demande ne donne pas d’adresse de retour.' };
+      if (row.redirect_uris.length !== 1) return page('La demande ne donne pas d’adresse de retour.');
       redirectUri = row.redirect_uris[0];
     } else if (row.redirect_uris.some((uri) => redirectUriMatches(uri, requestedUri))) {
       redirectUri = requestedUri;
     } else {
-      return { ok: false, page: 'L’adresse de retour de la demande n’est pas une adresse de cette application.' };
+      return page('L’adresse de retour de la demande n’est pas une adresse de cette application.');
     }
     const state = single('state') ?? null;
-    const fail = (error: string, description: string): AuthorizeCheck => ({
+    const fail = (error: string, description: string, message: string): AuthorizeCheck => ({
       ok: false,
-      redirect: withParams(redirectUri, { error, error_description: description, state, iss: issuer }),
+      page: `L’application a envoyé une demande que Genga refuse : ${message}`,
+      returnUrl: withParams(redirectUri, { error, error_description: description, state, iss: issuer }),
     });
-    if (single('response_type') !== 'code')
-      return fail('unsupported_response_type', 'Only response_type=code is supported.');
+    if (single('response_type') !== 'code') {
+      return fail('unsupported_response_type', 'Only response_type=code is supported.', 'type de réponse inconnu.');
+    }
     const challenge = single('code_challenge');
     if (single('code_challenge_method') !== 'S256' || !challenge || !/^[A-Za-z0-9_-]{43}$/.test(challenge)) {
-      return fail('invalid_request', 'PKCE is required: send a code_challenge with code_challenge_method=S256.');
+      return fail(
+        'invalid_request',
+        'PKCE is required: send a code_challenge with code_challenge_method=S256.',
+        'la protection PKCE (S256) manque.',
+      );
     }
     const resources = params.getAll('resource');
     if (resources.length > 1 || (resources.length === 1 && !sameResource(resources[0]))) {
-      return fail('invalid_target', `The only resource of this server is ${resource}.`);
+      return fail('invalid_target', `The only resource of this server is ${resource}.`, 'elle vise un autre serveur.');
     }
     const requested = parseScopes(params.get('scope'));
     if (requested !== null && !requested.length) {
-      return fail('invalid_scope', `The scopes of this server are: ${API_SCOPES.join(', ')}.`);
+      return fail(
+        'invalid_scope',
+        `The scopes of this server are: ${API_SCOPES.join(', ')}.`,
+        'elle demande des droits inconnus.',
+      );
     }
     return {
       ok: true,
@@ -539,21 +556,29 @@ export function createOAuth(
     return client;
   }
 
-  async function issueTokens(grantId: string, scopes: string[]) {
+  /**
+   * Stores a new access token and a new refresh token. The access token can have fewer scopes than
+   * the grant, after a refresh that asks for fewer. The refresh token keeps the scopes of the grant.
+   */
+  async function issueTokens(
+    db: Sql | TransactionSql,
+    grant: { id: string; scopes: ApiScope[] },
+    accessScopes: ApiScope[] = grant.scopes,
+  ) {
     const access = newSecret(OAUTH_ACCESS_PREFIX);
     const refresh = newSecret(OAUTH_REFRESH_PREFIX);
-    await sql`
-      INSERT INTO genga_oauth_tokens (token_hash, grant_id, kind, expires_at) VALUES
-        (${hashToken(access)}, ${grantId}, 'access', ${new Date(Date.now() + ACCESS_TTL_S * 1000)}),
-        (${hashToken(refresh)}, ${grantId}, 'refresh', ${new Date(Date.now() + REFRESH_TTL_MS)})
+    await db`
+      INSERT INTO genga_oauth_tokens (token_hash, grant_id, kind, scopes, expires_at) VALUES
+        (${hashToken(access)}, ${grant.id}, 'access', ${accessScopes}, ${new Date(Date.now() + ACCESS_TTL_S * 1000)}),
+        (${hashToken(refresh)}, ${grant.id}, 'refresh', ${grant.scopes}, ${new Date(Date.now() + REFRESH_TTL_MS)})
     `;
-    return oauthJson({
+    return {
       access_token: access,
       token_type: 'Bearer',
       expires_in: ACCESS_TTL_S,
       refresh_token: refresh,
-      scope: scopes.filter(isApiScope).join(' '),
-    });
+      scope: accessScopes.join(' '),
+    };
   }
 
   async function revokeGrant(grantId: string, reason: string, userId: string | null = null) {
@@ -574,7 +599,9 @@ export function createOAuth(
     if (!code || !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier)) {
       throw new OAuthError(400, 'invalid_request', 'Send code and code_verifier.');
     }
+    await sql`DELETE FROM genga_oauth_codes WHERE expires_at < now() - interval '1 day'`;
     const hash = hashToken(code);
+    // The code is used from here, also when a check below fails: a code never gets a second try.
     const [row] = await sql<
       {
         client_id: string;
@@ -592,9 +619,12 @@ export function createOAuth(
     `;
     const invalidGrant = () => new OAuthError(400, 'invalid_grant', 'The code is not valid, expired or already used.');
     if (!row) {
-      // A second use of a code means that someone else has it: the tokens of its first use go out.
+      // A second use of a code means that someone else has it: the grant of the first use goes out.
+      // `replayed_at` also stops a first use that has not created its grant yet.
       const [used] = await sql<{ grant_id: string | null }[]>`
-        SELECT grant_id FROM genga_oauth_codes WHERE code_hash = ${hash} AND used_at IS NOT NULL
+        UPDATE genga_oauth_codes SET replayed_at = now()
+        WHERE code_hash = ${hash} AND used_at IS NOT NULL
+        RETURNING grant_id
       `;
       if (used?.grant_id) await revokeGrant(used.grant_id, 'code_reuse');
       throw invalidGrant();
@@ -607,18 +637,41 @@ export function createOAuth(
     if (requestedResource !== null && !sameResource(requestedResource)) {
       throw new OAuthError(400, 'invalid_target', `The only resource of this server is ${resource}.`);
     }
-    const [user] = await sql`SELECT id FROM genga_users WHERE id = ${row.user_id} AND disabled_at IS NULL`;
-    if (!user) throw invalidGrant();
-    const [grant] = await sql<{ id: string }[]>`
-      INSERT INTO genga_oauth_grants (user_id, client_id, scopes, resource)
-      VALUES (${row.user_id}, ${client.id}, ${row.scopes}, ${row.resource})
-      RETURNING id
-    `;
-    await sql`UPDATE genga_oauth_codes SET grant_id = ${grant.id} WHERE code_hash = ${hash}`;
-    await audit(ctx, row.user_id, 'oauth.grant', {
-      detail: { grantId: grant.id, clientId: client.id, clientName: client.name, scopes: row.scopes },
+    const scopes = row.scopes.filter(isApiScope);
+    const result = await sql.begin(async (tx) => {
+      const [locked] = await tx<{ replayed_at: Date | null }[]>`
+        SELECT replayed_at FROM genga_oauth_codes WHERE code_hash = ${hash} FOR UPDATE
+      `;
+      const [user] = await tx`SELECT id FROM genga_users WHERE id = ${row.user_id} AND disabled_at IS NULL`;
+      if (!locked || locked.replayed_at || !user) return null;
+      // A new consent replaces the earlier grant of the same person for the same client.
+      const replaced = await tx<{ id: string }[]>`
+        UPDATE genga_oauth_grants SET revoked_at = now()
+        WHERE user_id = ${row.user_id} AND client_id = ${client.id} AND revoked_at IS NULL
+        RETURNING id
+      `;
+      if (replaced.length) {
+        await tx`DELETE FROM genga_oauth_tokens WHERE grant_id IN ${tx(replaced.map((grant) => grant.id))}`;
+      }
+      const [grant] = await tx<{ id: string }[]>`
+        INSERT INTO genga_oauth_grants (user_id, client_id, scopes, resource)
+        VALUES (${row.user_id}, ${client.id}, ${scopes}, ${row.resource})
+        RETURNING id
+      `;
+      await tx`UPDATE genga_oauth_codes SET grant_id = ${grant.id} WHERE code_hash = ${hash}`;
+      const body = await issueTokens(tx, { id: grant.id, scopes });
+      return { grantId: grant.id, replaced: replaced.map((item) => item.id), body };
     });
-    return issueTokens(grant.id, row.scopes);
+    if (!result) throw invalidGrant();
+    for (const grantId of result.replaced) {
+      await audit(ctx, row.user_id, 'oauth.revoke', {
+        detail: { grantId, clientId: client.id, ownerId: row.user_id, reason: 'replaced' },
+      });
+    }
+    await audit(ctx, row.user_id, 'oauth.grant', {
+      detail: { grantId: result.grantId, clientId: client.id, clientName: client.name, scopes },
+    });
+    return oauthJson(result.body);
   }
 
   async function refresh(client: ClientRow, params: URLSearchParams): Promise<Response> {
@@ -635,16 +688,22 @@ export function createOAuth(
     `;
     if (!row) {
       // A refresh token that comes back after its rotation was stolen, or the client lost the new one.
-      // Both cases end the grant (OAuth 2.1, 4.3.1).
-      const [used] = await sql<{ grant_id: string }[]>`
-        SELECT grant_id FROM genga_oauth_tokens WHERE token_hash = ${hash} AND kind = 'refresh' AND used_at IS NOT NULL
+      // Both cases end the grant (OAuth 2.1, 4.3.1). Two refreshes of one client at the same time
+      // are the exception: the second one gets an error, and the grant stays.
+      const [used] = await sql<{ grant_id: string; used_at: Date; client_id: string }[]>`
+        SELECT t.grant_id, t.used_at, g.client_id
+        FROM genga_oauth_tokens t JOIN genga_oauth_grants g ON g.id = t.grant_id
+        WHERE t.token_hash = ${hash} AND t.kind = 'refresh' AND t.used_at IS NOT NULL
       `;
-      if (used) await revokeGrant(used.grant_id, 'refresh_reuse');
+      const concurrent =
+        used && used.client_id === client.id && Date.now() - used.used_at.getTime() < REFRESH_REUSE_GRACE_MS;
+      if (used && !concurrent) await revokeGrant(used.grant_id, 'refresh_reuse');
       throw invalidGrant();
     }
     if (!row.ok || row.client_id !== client.id) throw invalidGrant();
+    const grantScopes = row.scopes.filter(isApiScope);
     const requested = parseScopes(params.get('scope'));
-    if (requested !== null && (!requested.length || requested.some((scope) => !row.scopes.includes(scope)))) {
+    if (requested !== null && (!requested.length || requested.some((scope) => !grantScopes.includes(scope)))) {
       throw new OAuthError(400, 'invalid_scope', 'The scope cannot grow on refresh.');
     }
     const requestedResource = params.get('resource');
@@ -652,7 +711,7 @@ export function createOAuth(
       throw new OAuthError(400, 'invalid_target', `The only resource of this server is ${resource}.`);
     }
     await sql`DELETE FROM genga_oauth_tokens WHERE grant_id = ${row.grant_id} AND expires_at < now()`;
-    return issueTokens(row.grant_id, row.scopes);
+    return oauthJson(await issueTokens(sql, { id: row.grant_id, scopes: grantScopes }, requested ?? grantScopes));
   }
 
   async function tokenEndpoint(request: Request): Promise<Response> {
@@ -828,7 +887,7 @@ export function createOAuth(
         disabled_at: Date | null;
       }[]
     >`
-      SELECT g.id AS grant_id, g.scopes, g.resource, g.last_used_at, c.id AS client_id, c.name AS client_name,
+      SELECT g.id AS grant_id, t.scopes, g.resource, g.last_used_at, c.id AS client_id, c.name AS client_name,
         u.id AS user_id, u.email, u.name AS user_name, u.role, u.created_at AS user_created_at, u.disabled_at
       FROM genga_oauth_tokens t
         JOIN genga_oauth_grants g ON g.id = t.grant_id

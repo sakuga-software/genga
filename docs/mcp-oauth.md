@@ -20,14 +20,14 @@ the role of the user, both, checked on each request with the current role.
 
 ## Endpoints
 
-| Path                                             | Standard | Notes                                            |
-| ------------------------------------------------ | -------- | ------------------------------------------------ |
-| `/.well-known/oauth-protected-resource<mcpPath>` | RFC 9728 | Also at `/.well-known/oauth-protected-resource`. |
-| `/.well-known/oauth-authorization-server`        | RFC 8414 | No OpenID Connect discovery.                     |
-| `<adminPath>/oauth/authorize`                    | RFC 6749 | The consent page, an admin route.                |
-| `<adminPath>/api/oauth/token`                    | RFC 6749 | `authorization_code` and `refresh_token`.        |
-| `<adminPath>/api/oauth/register`                 | RFC 7591 | Dynamic client registration.                     |
-| `<adminPath>/api/oauth/revoke`                   | RFC 7009 | Revokes the whole grant.                         |
+| Path                                             | Standard | Notes                                                         |
+| ------------------------------------------------ | -------- | ------------------------------------------------------------- |
+| `/.well-known/oauth-protected-resource<mcpPath>` | RFC 9728 | Not at the root: the root document would describe the origin. |
+| `/.well-known/oauth-authorization-server`        | RFC 8414 | No OpenID Connect discovery.                                  |
+| `<adminPath>/oauth/authorize`                    | RFC 6749 | The consent page, an admin route.                             |
+| `<adminPath>/api/oauth/token`                    | RFC 6749 | `authorization_code` and `refresh_token`.                     |
+| `<adminPath>/api/oauth/register`                 | RFC 7591 | Dynamic client registration.                                  |
+| `<adminPath>/api/oauth/revoke`                   | RFC 7009 | Revokes the whole grant.                                      |
 
 The token, registration and revocation endpoints are under `<adminPath>/api` because every app
 already routes that path to `genga.handle`. `genga.handle` answers them before the admin API,
@@ -57,7 +57,8 @@ headers of the document.
 
 **DCR.** The endpoint is open, as MCP clients expect. To limit abuse: 30 registrations per
 client address per hour, 10 redirect URIs at most, 2000 characters per URI, and a registered
-client that never starts an authorization request is deleted after 24 hours. A client can ask
+client that never starts an authorization request is deleted after 24 hours. A metadata client
+without an active grant is deleted 24 hours after its document expires. A client can ask
 for `none`, `client_secret_basic` or `client_secret_post`. Genga stores the hash of the secret.
 
 **Redirect URIs.** Allowed: `https`, `http` on `localhost`, `127.0.0.1` or `[::1]`, and
@@ -70,12 +71,15 @@ credentials. The match is exact, except the port of a loopback `http` URI (RFC 8
 The consent page checks the request when it shows the page and again when it receives the
 answer. It never trusts its own form: the form posts the original query string back.
 
-1. An unknown client, a missing redirect URI with more than one registered URI, or a redirect
-   URI of another client shows an error page. Genga never redirects to an unchecked URI.
-2. Every other error goes back to the client with `error`, `state` and `iss`:
-   `response_type` other than `code`, no PKCE or a method other than `S256`, a `resource` other
-   than the MCP endpoint, a `scope` with no known scope.
-3. Without a session, the page sends the person to the login page, with the request in `next`.
+1. Without a session, the page sends the person to the login page, with the request in `next`.
+   The page reads no client and downloads no metadata document before the session check.
+2. An unknown client, a missing redirect URI with more than one registered URI, or a redirect
+   URI of another client shows an error page.
+3. Every other error (`response_type` other than `code`, no PKCE or a method other than `S256`,
+   a `resource` other than the MCP endpoint, a `scope` with no known scope) also shows an error
+   page, with a link back to the client that carries `error`, `state` and `iss`. Genga never
+   redirects to a client by itself before the person acts: anybody can register a client, so a
+   redirect URI is not a trusted destination (open redirect).
 4. The page shows the client name, the URL of its metadata document or « registered
    automatically », the host of `client_uri`, the scheme and host of the redirect URI, and a
    warning when the redirect URI is on the computer (loopback or private-use scheme). It does
@@ -100,9 +104,15 @@ challenge, the scopes and the resource. The answer carries `iss` (RFC 9207).
 
 - A **grant** is one approval of one person for one client. It holds the scopes and the
   resource. It is the unit that the tokens page lists and revokes.
-- The code exchange creates the grant. A second use of a code revokes the grant of the first use.
+- The code exchange creates the grant, in one transaction with its tokens. A second use of a code
+  revokes the grant of the first use, also when the second use comes before the grant exists.
+- A new approval of the same person for the same client replaces the earlier grant.
 - Each refresh gives a new refresh token and marks the old one as used. A used refresh token
-  that comes back revokes the grant (OAuth 2.1, 4.3.1). A refresh cannot add scopes.
+  that comes back revokes the grant (OAuth 2.1, 4.3.1). Exception: if the same client uses it
+  again within 30 seconds, Genga refuses it but keeps the grant, because two windows of one
+  client can refresh at the same time.
+- A refresh cannot add scopes. A refresh that asks for fewer scopes gets an access token with
+  these scopes; the grant and the refresh token keep theirs.
 - The MCP endpoint takes an access token only if its grant is active, its user is enabled, and
   its resource is this endpoint (audience check, RFC 8707).
 - Bad OAuth tokens count in the same rate limit as bad personal tokens.

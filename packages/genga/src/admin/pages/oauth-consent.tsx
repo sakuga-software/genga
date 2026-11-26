@@ -21,6 +21,13 @@ export function OAuthConsentPage() {
         <p role="alert" className="text-sm">
           {page.message}
         </p>
+        {page.returnUrl && (
+          <p className="mt-4 text-sm">
+            <a href={page.returnUrl} className="text-[var(--link)] underline underline-offset-2">
+              Revenir à l’application
+            </a>
+          </p>
+        )}
       </AuthLayout>
     );
   }
