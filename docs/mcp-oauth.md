@@ -146,5 +146,5 @@ the `mcp` option), the `401` stays `Bearer realm="genga"`.
 
 ## Storage
 
-Migration `0005_oauth` adds `genga_oauth_clients`, `genga_oauth_grants`, `genga_oauth_codes`
+Migration `0006_oauth` adds `genga_oauth_clients`, `genga_oauth_grants`, `genga_oauth_codes`
 and `genga_oauth_tokens`. The database keeps the hash of every code, token and client secret.

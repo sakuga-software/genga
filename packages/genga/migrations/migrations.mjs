@@ -190,7 +190,7 @@ CREATE INDEX genga_schedules_due_idx ON genga_schedules (run_at) WHERE failed_at
   {
     // OAuth 2.1 for the MCP server. A grant is one consent of a user to a client: it is the unit
     // that the admin lists and revokes. The database keeps the sha256 of codes, tokens and secrets only.
-    id: '0005_oauth',
+    id: '0006_oauth',
     sql: `
 CREATE TABLE genga_oauth_clients (
   id text PRIMARY KEY,

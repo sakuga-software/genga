@@ -41,7 +41,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   to copy. The rights stay the scopes and the role of the user, both. The tokens page lists the
   connected clients and disconnects them. On with the `mcp` option; `mcp.oauth: false` and
   `GENGA_MCP_OAUTH=off` turn it off. Personal tokens (`gga_`) keep working. Migration
-  `0005_oauth`. See `docs/mcp-oauth.md`.
+  `0006_oauth`. See `docs/mcp-oauth.md`.
 - `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
   public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
   answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer
