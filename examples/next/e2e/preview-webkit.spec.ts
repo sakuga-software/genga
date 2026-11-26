@@ -1,12 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-// WebKit blocks the cookies of a frame on another site, except `Partitioned` cookies. The admin
-// is on `localhost` and the site on `127.0.0.1`: this test fails if Draft Mode loses its cookie.
+// WebKit on macOS (the engine of Safari) blocks the cookies of a frame on another site, except
+// `Partitioned` cookies. The admin is on `localhost` and the site on `127.0.0.1`: on macOS, this
+// test fails if Draft Mode loses its cookie. WebKit on Linux (libsoup) blocks every cookie of
+// such a frame, `Partitioned` included, so there the test must fail.
 const GENGA = process.env.E2E_GENGA_URL ?? 'http://localhost:3910';
 const SITE = process.env.E2E_SITE_URL ?? 'https://127.0.0.1:3912';
 const PASSWORD = 'a-long-e2e-password';
 
 test('the preview works in WebKit, in a frame on another site', async ({ page }) => {
+  test.fail(process.platform === 'linux', 'WebKit on Linux keeps no cookie of a frame on another site.');
   await page.goto(`${GENGA}/admin/login`);
   await page.getByLabel('Email').fill('admin@genga.test');
   await page.getByLabel('Mot de passe').fill(PASSWORD);
