@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createGenga } from '../src/server';
 import type { PublicUser } from '../src/types';
 import { TEST_URL } from './global-setup';
@@ -282,4 +282,95 @@ describe('scheduled publish and unpublish', () => {
       await single.close();
     }
   }, 10_000);
+
+  it('refuses a date without a time zone', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const id = await draftDocument(editor);
+    for (const publishAt of ['2099-12-01T10:00', '2099-12-01']) {
+      await expect(ctx.genga.documents.schedule(editor, id, { publishAt })).rejects.toMatchObject({ status: 400 });
+    }
+    const saved = await ctx.genga.documents.schedule(editor, id, { publishAt: '2099-12-01T10:00:00+01:00' });
+    expect(saved.schedule.publish?.at).toBe('2099-12-01T09:00:00.000Z');
+  });
+
+  it('stops the scheduled publish when a user who cannot publish changes the draft', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const author = await createUser(ctx.genga, 'author');
+    const id = await draftDocument(author);
+    await ctx.genga.documents.schedule(editor, id, { publishAt: new Date(Date.now() + HOUR).toISOString() });
+    const doc = await ctx.genga.documents.get(editor, id);
+    const saved = await ctx.genga.documents.saveDraft(
+      editor,
+      id,
+      { ...doc.draft, title: 'Par l’éditeur' },
+      doc.draftRev,
+    );
+    expect((await ctx.genga.documents.get(editor, id)).schedule.publish?.failedAt).toBeNull();
+
+    await ctx.genga.documents.saveDraft(author, id, { ...doc.draft, title: 'Par l’auteur' }, saved.draftRev);
+    await makeDue(id, 'publish');
+    expect(await ctx.genga.runSchedules()).toBe(0);
+    const after = await ctx.genga.documents.get(editor, id);
+    expect(after.status).toBe('draft');
+    expect(after.schedule.publish?.error).toContain('ne peut pas publier');
+  });
+
+  it('does not mark a schedule saved again after the listing as failed', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const id = await draftDocument(editor);
+    await ctx.genga.documents.schedule(editor, id, { publishAt: new Date(Date.now() + HOUR).toISOString() });
+    await makeDue(id, 'publish');
+    const [listed] = await ctx.genga.sql<
+      { run_at: Date }[]
+    >`SELECT run_at FROM genga_schedules WHERE document_id = ${id}`;
+    await ctx.genga.documents.schedule(editor, id, { publishAt: new Date(Date.now() + 2 * HOUR).toISOString() });
+    await ctx.genga.documents.failSchedule(id, 'publish', listed.run_at, 'Ancienne erreur');
+    expect((await ctx.genga.documents.get(editor, id)).schedule.publish).toMatchObject({ failedAt: null, error: null });
+  });
+
+  it('keeps a due unpublish behind a due publish of the same document after a server error', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const id = await draftDocument(editor);
+    await ctx.genga.documents.schedule(editor, id, {
+      publishAt: new Date(Date.now() + HOUR).toISOString(),
+      unpublishAt: new Date(Date.now() + 2 * HOUR).toISOString(),
+    });
+    await ctx.genga.sql`
+      UPDATE genga_schedules SET run_at = now() - CASE action WHEN 'publish' THEN interval '2 minutes' ELSE interval '1 minute' END
+      WHERE document_id = ${id}
+    `;
+    expect(await ctx.genga.documents.runScheduled(editor, id, 'unpublish')).toBe(false);
+    const real = ctx.genga.documents.runScheduled;
+    const spy = vi.spyOn(ctx.genga.documents, 'runScheduled').mockImplementation(async (user, docId, action) => {
+      if (action === 'publish') throw new Error('database unreachable');
+      return real(user, docId, action);
+    });
+    try {
+      expect(await ctx.genga.runSchedules()).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+    const after = await ctx.genga.documents.get(editor, id);
+    expect(after.schedule.unpublish).toMatchObject({ failedAt: null });
+    expect(after.schedule.publish).toMatchObject({ failedAt: null });
+    expect(await ctx.genga.runSchedules()).toBe(2);
+    expect(await eventTypes(id)).toEqual(['document.published', 'document.unpublished']);
+  });
+
+  it('records the schedule as failed after 10 server errors', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const id = await draftDocument(editor);
+    await ctx.genga.documents.schedule(editor, id, { publishAt: new Date(Date.now() + HOUR).toISOString() });
+    await makeDue(id, 'publish');
+    await ctx.genga.sql`UPDATE genga_schedules SET attempts = 8 WHERE document_id = ${id}`;
+    const spy = vi.spyOn(ctx.genga.documents, 'runScheduled').mockRejectedValue(new Error('database unreachable'));
+    try {
+      await ctx.genga.runSchedules();
+      expect((await ctx.genga.documents.get(editor, id)).schedule.publish?.failedAt).toBeNull();
+      await ctx.genga.runSchedules();
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await ctx.genga.documents.get(editor, id)).schedule.publish?.error).toContain('10 fois');
+  });
 });

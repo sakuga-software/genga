@@ -7,13 +7,21 @@ import { GengaError } from './errors';
 // Any constant works: all Genga processes must use the same one.
 const SCHEDULES_LOCK_ID = 7_310_442_120;
 const BATCH = 50;
+/** Runs that end on a server error before the runner records the schedule as failed. */
+const MAX_ATTEMPTS = 10;
 
 export type SchedulerOptions = {
   /** Milliseconds between two runs. Default: 30 000. */
   intervalMs?: number;
 };
 
-type DueRow = { document_id: string; action: ScheduleAction; created_by: string | null };
+type DueRow = {
+  document_id: string;
+  action: ScheduleAction;
+  run_at: Date;
+  created_by: string | null;
+  attempts: number;
+};
 
 /** A refusal (rights, invalid fields, a taken slug) comes again on each run: the runner records it and stops. */
 function isRefusal(error: unknown): error is GengaError {
@@ -50,6 +58,7 @@ export function createScheduler(
       await documents.failSchedule(
         row.document_id,
         row.action,
+        row.run_at,
         'La personne qui a programmé cette action n’a plus de compte actif. Programmez-la à nouveau.',
       );
       return false;
@@ -58,27 +67,46 @@ export function createScheduler(
       return await documents.runScheduled(user, row.document_id, row.action);
     } catch (error) {
       if (!isRefusal(error)) throw error;
-      await documents.failSchedule(row.document_id, row.action, error.message);
+      await documents.failSchedule(row.document_id, row.action, row.run_at, error.message);
       return false;
     }
   }
 
+  async function recordAttempt(row: DueRow) {
+    if (row.attempts + 1 >= MAX_ATTEMPTS) {
+      await documents.failSchedule(
+        row.document_id,
+        row.action,
+        row.run_at,
+        `L’action a échoué ${MAX_ATTEMPTS} fois sur une erreur du serveur. Programmez-la à nouveau.`,
+      );
+      return;
+    }
+    await sql`
+      UPDATE genga_schedules SET attempts = attempts + 1
+      WHERE document_id = ${row.document_id} AND action = ${row.action}
+        AND date_trunc('milliseconds', run_at) = ${row.run_at}
+    `;
+  }
+
   async function runLocked(): Promise<number> {
     const due = await sql<DueRow[]>`
-      SELECT document_id, action, created_by FROM genga_schedules
+      SELECT document_id, action, run_at, created_by, attempts FROM genga_schedules
       WHERE failed_at IS NULL AND run_at <= now()
       ORDER BY run_at, action LIMIT ${BATCH}
     `;
     let done = 0;
+    // After a server error, the later actions of the same document wait: an unpublish must not run before its publish.
+    const held = new Set<string>();
     for (const row of due) {
       if (stopped) break;
+      if (held.has(row.document_id)) continue;
       try {
         if (await runRow(row)) done += 1;
       } catch (error) {
-        log.error(
-          `[genga] The scheduled ${row.action} of document ${row.document_id} failed. It runs again later.`,
-          error,
-        );
+        held.add(row.document_id);
+        log.error(`[genga] The scheduled ${row.action} of document ${row.document_id} failed.`, error);
+        await recordAttempt(row).catch((recordError) => log.error('[genga] The scheduler failed:', recordError));
       }
     }
     return done;

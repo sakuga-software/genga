@@ -181,6 +181,7 @@ CREATE TABLE genga_schedules (
   created_at timestamptz NOT NULL DEFAULT now(),
   failed_at timestamptz,
   last_error text,
+  attempts integer NOT NULL DEFAULT 0,
   PRIMARY KEY (document_id, action)
 );
 CREATE INDEX genga_schedules_due_idx ON genga_schedules (run_at) WHERE failed_at IS NULL;

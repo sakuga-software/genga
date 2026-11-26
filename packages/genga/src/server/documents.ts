@@ -79,8 +79,14 @@ function toSchedule(rows: ScheduleRow[]): DocumentSchedule {
 function scheduleDate(value: unknown, label: string): Date | null | undefined {
   if (value === undefined) return undefined;
   if (value === null || value === '') return null;
-  const date = typeof value === 'string' ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) throw badRequest(`Date de ${label} invalide.`);
+  // A date without a zone would be read in the zone of the server.
+  const zoned = typeof value === 'string' && /(Z|[+-]\d\d:?\d\d)$/i.test(value.trim());
+  const date = zoned ? new Date(value as string) : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    throw badRequest(
+      `Date de ${label} invalide : donnez une date ISO avec son fuseau, par exemple 2026-12-01T09:00:00Z.`,
+    );
+  }
   return date;
 }
 
@@ -213,12 +219,33 @@ export function createDocuments(ctx: GengaContext) {
       await tx`DELETE FROM genga_schedules WHERE document_id = ${id} AND action = ${action}`;
       return true;
     }
+    if (action === 'unpublish') {
+      // A due publish that has not run yet comes first, or the unpublish would act on a draft.
+      const [pending] = await tx`
+        SELECT 1 FROM genga_schedules
+        WHERE document_id = ${id} AND action = 'publish' AND run_at <= now() AND failed_at IS NULL
+      `;
+      if (pending) return false;
+    }
     const due = await tx`
       DELETE FROM genga_schedules
       WHERE document_id = ${id} AND action = ${action} AND run_at <= now() AND failed_at IS NULL
       RETURNING 1
     `;
     return due.length > 0;
+  }
+
+  /**
+   * The scheduled publish acts with the rights of the user who saved it. A draft change by a user
+   * who cannot publish stops it, so that this change does not go live without a publisher.
+   */
+  async function stopScheduleOnForeignChange(tx: TransactionSql, user: PublicUser, row: DocumentRow) {
+    if (can(user, 'publish', collectionOf(row.collection).access, { createdBy: row.created_by })) return;
+    await tx`
+      UPDATE genga_schedules SET failed_at = now(),
+        last_error = ${'Le brouillon a changé après la programmation, par une personne qui ne peut pas publier. Relisez-le, puis programmez à nouveau.'}
+      WHERE document_id = ${row.id} AND action = 'publish' AND failed_at IS NULL
+    `;
   }
 
   async function get(user: PublicUser, id: string): Promise<AdminDocument> {
@@ -317,6 +344,7 @@ export function createDocuments(ctx: GengaContext) {
       if (!row) throw notFound('Document introuvable.');
       assertCan(user, 'update', row);
       if (row.draft_rev !== draftRev) throw conflict(row.draft_rev);
+      await stopScheduleOnForeignChange(tx, user, row);
       const collection = collectionOf(row.collection);
       const checked = validate(collection.fields, input, 'draft', ctx.blocks);
       if (!checked.ok) throw badRequest('Données invalides.', checked.issues);
@@ -606,7 +634,7 @@ export function createDocuments(ctx: GengaContext) {
           VALUES (${id}, ${action}, ${date}, ${user.id})
           ON CONFLICT (document_id, action) DO UPDATE
           SET run_at = EXCLUDED.run_at, created_by = EXCLUDED.created_by, created_at = now(),
-            failed_at = NULL, last_error = NULL
+            failed_at = NULL, last_error = NULL, attempts = 0
         `;
       }
       return { collection: row.collection, schedule: await scheduleOf(id, tx) };
@@ -664,6 +692,7 @@ export function createDocuments(ctx: GengaContext) {
       if (!row) throw notFound('Document introuvable.');
       assertCan(user, 'update', row);
       if (row.draft_rev !== draftRev) throw conflict(row.draft_rev);
+      await stopScheduleOnForeignChange(tx, user, row);
       const [version] = await tx<{ data: Record<string, unknown> }[]>`
         SELECT data FROM genga_versions WHERE id = ${versionId} AND document_id = ${id}
       `;
@@ -702,12 +731,16 @@ export function createDocuments(ctx: GengaContext) {
     await takeOffline(user, id, 'delete', true);
   }
 
-  /** For the runner: records why a scheduled action cannot run. It stays until the schedule is saved again. */
-  async function failSchedule(id: string, action: ScheduleAction, message: string) {
+  /**
+   * For the runner: records why a scheduled action cannot run. It stays until the schedule is saved
+   * again. `runAt` is the date that the runner listed: a schedule saved again since then is not touched.
+   */
+  async function failSchedule(id: string, action: ScheduleAction, runAt: Date, message: string) {
     const rows = await sql<{ collection: string; created_by: string | null }[]>`
       UPDATE genga_schedules s SET failed_at = now(), last_error = ${message}
       FROM genga_documents d
-      WHERE s.document_id = ${id} AND s.action = ${action} AND s.failed_at IS NULL AND d.id = s.document_id
+      WHERE s.document_id = ${id} AND s.action = ${action} AND date_trunc('milliseconds', s.run_at) = ${runAt} AND s.failed_at IS NULL
+        AND d.id = s.document_id
       RETURNING d.collection, s.created_by
     `;
     if (!rows[0]) return;

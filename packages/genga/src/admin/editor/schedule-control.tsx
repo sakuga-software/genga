@@ -24,10 +24,11 @@ function toLocalInput(iso: string | undefined): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function fromLocalInput(value: string): string | null {
+/** `null` clears the date; `undefined` is a value that the browser cannot read as a date. */
+function fromLocalInput(value: string): string | null | undefined {
   if (!value) return null;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function hasSchedule(schedule: DocumentSchedule) {
@@ -66,22 +67,38 @@ type ScheduleControlProps = {
 export function ScheduleControl({ documentId, schedule, onSaved }: ScheduleControlProps) {
   const [isOpen, setOpen] = useState(false);
   const [values, setValues] = useState<Record<ScheduleAction, string>>({ publish: '', unpublish: '' });
+  const [initial, setInitial] = useState<Record<ScheduleAction, string>>({ publish: '', unpublish: '' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   function open(next: boolean) {
     if (next) {
-      setValues({ publish: toLocalInput(schedule.publish?.at), unpublish: toLocalInput(schedule.unpublish?.at) });
+      const loaded = { publish: toLocalInput(schedule.publish?.at), unpublish: toLocalInput(schedule.unpublish?.at) };
+      setValues(loaded);
+      setInitial(loaded);
       setError(null);
     }
     setOpen(next);
   }
 
   async function save(next: Record<ScheduleAction, string>) {
-    const body = { publishAt: fromLocalInput(next.publish), unpublishAt: fromLocalInput(next.unpublish) };
-    const now = Date.now();
-    if (ACTIONS.some((action) => body[`${action}At`] && new Date(body[`${action}At`] as string).getTime() <= now)) {
-      setError('Choisissez une date dans le futur.');
+    // Only the changed dates go to the server: another editor can have changed the other one.
+    const body: Partial<Record<`${ScheduleAction}At`, string | null>> = {};
+    for (const action of ACTIONS) {
+      if (next[action] === initial[action]) continue;
+      const value = fromLocalInput(next[action]);
+      if (value === undefined) {
+        setError('Cette date est incomplète.');
+        return;
+      }
+      if (value && new Date(value).getTime() <= Date.now()) {
+        setError('Choisissez une date dans le futur.');
+        return;
+      }
+      body[`${action}At`] = value;
+    }
+    if (!Object.keys(body).length) {
+      setOpen(false);
       return;
     }
     setBusy(true);
