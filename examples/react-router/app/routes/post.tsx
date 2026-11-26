@@ -15,14 +15,20 @@ export function headers({ loaderHeaders, errorHeaders }: Route.HeadersArgs) {
   return errorHeaders ?? loaderHeaders;
 }
 
+function head({ title, excerpt }: PostData) {
+  return { title, meta: { description: excerpt || null } };
+}
+
 export function meta({ loaderData }: Route.MetaArgs) {
   if (!loaderData) return [];
-  const { title, excerpt } = loaderData.doc.data;
-  return [{ title }, ...(excerpt ? [{ name: 'description', content: excerpt }] : [])];
+  const { title, meta: tags } = head(loaderData.doc.data);
+  return [{ title }, ...(tags.description ? [{ name: 'description', content: tags.description }] : [])];
 }
 
 export default function Post({ loaderData }: Route.ComponentProps) {
-  const { data: post } = usePreviewData(loaderData.doc, loaderData.preview);
+  const { data: post } = usePreviewData(loaderData.doc, loaderData.preview, {
+    head: (data) => head(data as PostData),
+  });
   return (
     <article className="stack">
       <header>

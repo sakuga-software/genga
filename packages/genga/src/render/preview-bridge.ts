@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { connectBridge } from '../preview/bridge';
+import { connectBridge, type PreviewHead } from '../preview/bridge';
 import type { PublishedDocument } from '../types';
 
 const drafts = new Map<string, Record<string, unknown>>();
@@ -20,6 +20,11 @@ export type PreviewDataOptions = {
   adminOrigin?: string;
   /** Called after each autosave of the editor, for data that renders on the server only. */
   onSaved?: (draftRev: number) => void;
+  /**
+   * Gives the title and the meta tags of a draft, for example the same values as the `meta`
+   * of the route. The preview updates them at each change, because a framework sets them at load only.
+   */
+  head?: (data: Record<string, unknown>) => PreviewHead;
 };
 
 /**
@@ -33,8 +38,10 @@ export function usePreviewData<T>(
 ): PublishedDocument<T> {
   const { adminOrigin } = options;
   const onSaved = useRef(options.onSaved);
+  const head = useRef(options.head);
   useEffect(() => {
     onSaved.current = options.onSaved;
+    head.current = options.head;
   });
   useEffect(
     () =>
@@ -44,6 +51,7 @@ export function usePreviewData<T>(
             adminOrigin: adminOrigin ?? window.location.origin,
             onDraft: (data) => setDraft(doc.id, data),
             onSaved: (draftRev) => onSaved.current?.(draftRev),
+            head: (data) => head.current?.(data) ?? {},
           })
         : undefined,
     [preview, doc.id, adminOrigin],

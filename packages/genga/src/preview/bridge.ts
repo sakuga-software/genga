@@ -43,6 +43,40 @@ const PREVIEW_CSS = `
 [data-genga-block][data-genga-focused] { outline: 2px solid #1778ff; }
 `;
 
+/**
+ * The head of a preview page. `meta` keys are `name` values (`description`) or `property`
+ * values (`og:title`). A `null` or empty value removes the tag.
+ */
+export type PreviewHead = {
+  title?: string | null;
+  meta?: Record<string, string | null | undefined>;
+};
+
+function metaTag(key: string): Element | null {
+  const value = CSS.escape(key);
+  return document.head.querySelector(`meta[name="${value}"], meta[property="${value}"]`);
+}
+
+/** Writes the title and the meta tags of a preview page. Keys that `head` does not give stay as they are. */
+export function applyHead(head: PreviewHead) {
+  if (typeof document === 'undefined') return;
+  if (typeof head.title === 'string') document.title = head.title;
+  for (const [key, content] of Object.entries(head.meta ?? {})) {
+    if (content === undefined) continue;
+    let tag = metaTag(key);
+    if (content === null || content === '') {
+      tag?.remove();
+      continue;
+    }
+    if (!tag) {
+      tag = document.createElement('meta');
+      tag.setAttribute(key.startsWith('og:') ? 'property' : 'name', key);
+      document.head.append(tag);
+    }
+    tag.setAttribute('content', content);
+  }
+}
+
 export type BridgeOptions = {
   documentId: string;
   /** The origin of the Genga admin. The bridge sends to it and accepts messages only from it. */
@@ -52,6 +86,8 @@ export type BridgeOptions = {
   onSaved?: (draftRev: number) => void;
   /** Called with a fresh preview token, before the current one expires. */
   onToken?: (token: string) => void;
+  /** Gives the title and the meta tags of a draft. The bridge writes them at each draft. */
+  head?: (data: Record<string, unknown>) => PreviewHead;
 };
 
 /**
@@ -59,7 +95,7 @@ export type BridgeOptions = {
  * drafts and focus, and sends a click on a block. It does nothing outside a frame.
  * Returns the function that disconnects it.
  */
-export function connectBridge({ documentId, adminOrigin, onDraft, onSaved, onToken }: BridgeOptions): () => void {
+export function connectBridge({ documentId, adminOrigin, onDraft, onSaved, onToken, head }: BridgeOptions): () => void {
   if (typeof window === 'undefined' || window.parent === window) return () => {};
   const origin = normalizeOrigin(adminOrigin);
   const parent = window.parent;
@@ -76,7 +112,10 @@ export function connectBridge({ documentId, adminOrigin, onDraft, onSaved, onTok
     if (!isTrustedMessage(event, { origin, source: parent, documentId })) return;
     const message = event.data;
     if (message.type === 'genga:hello') post({ type: 'genga:ready', documentId });
-    if (message.type === 'genga:draft') onDraft(message.data);
+    if (message.type === 'genga:draft') {
+      onDraft(message.data);
+      if (head) applyHead(head(message.data));
+    }
     if (message.type === 'genga:saved' && Number.isInteger(message.draftRev)) onSaved?.(message.draftRev);
     if (message.type === 'genga:token' && typeof message.token === 'string') onToken?.(message.token);
     if (message.type === 'genga:focus') {

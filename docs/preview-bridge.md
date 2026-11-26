@@ -177,4 +177,27 @@ Pages whose blocks render only on the server (React Server Components, `.astro`)
 calls back after each autosave, and the page refreshes with the token in memory.
 
 `usePreviewData` reads the drafts from an external store (`useSyncExternalStore`), so React
-renders again with the new data. `meta` and `<title>` do not update live.
+renders again with the new data.
+
+## Title and meta tags
+
+A framework writes `<title>` and the meta tags when the page loads, and a draft does not reload
+the page. Give `head` to update them at each draft. It takes the draft and returns the title and
+the meta tags:
+
+```tsx
+const head = (post: PostData) => ({
+  title: `${post.title} | Blog`,
+  meta: { description: post.excerpt || null, 'og:title': post.title },
+});
+
+usePreviewData(doc, preview, { head: (data) => head(data as PostData) });
+connectPreview({ adminOrigin, onDraft, head });
+```
+
+- A `meta` key is the `name` of the tag (`description`), or its `property` for a key that starts
+  with `og:`. The bridge changes the tag that has this `name` or `property`, or adds one.
+- A `null` or empty value removes the tag. An `undefined` value and the keys that `head` does not
+  give stay as they are.
+- `head` runs in the preview frame only. Use the same function in the `meta` of the route, so the
+  preview and the page that loads show the same values.

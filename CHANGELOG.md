@@ -41,6 +41,8 @@ All notable changes to the `genga` package. The format follows
 - Editor: blocks move by drag and drop, with a handle on each block. With the keyboard, Enter on
   the handle starts the move, Tab chooses the target block and Enter drops; a screen reader hears
   each step in French. The Monter and Descendre buttons stay (GNG-22).
+- `head` option of `usePreviewData`, `connectPreview` and `connectBridge`: the preview frame
+  updates `<title>` and the meta tags at each draft, like the content (GNG-23).
 
 ### Changed
 

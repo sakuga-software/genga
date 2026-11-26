@@ -1,4 +1,11 @@
-import { connectBridge, normalizeOrigin, PREVIEW_PARAM, PREVIEW_TOKEN_PARAM } from './bridge';
+import {
+  applyHead,
+  connectBridge,
+  normalizeOrigin,
+  PREVIEW_PARAM,
+  PREVIEW_TOKEN_PARAM,
+  type PreviewHead,
+} from './bridge';
 
 export type PreviewParams = { documentId: string; token: string | null };
 
@@ -57,6 +64,8 @@ export type ConnectPreviewOptions = {
   onSaved?: (draftRev: number, documentId: string) => void;
   /** Called when the editor sends a fresh preview token. */
   onToken?: (token: string, documentId: string) => void;
+  /** Gives the title and the meta tags of a draft. They update with each draft, like the content. */
+  head?: (data: Record<string, unknown>) => PreviewHead;
 };
 
 export type PreviewConnection = {
@@ -96,6 +105,7 @@ export function connectPreview(options: ConnectPreviewOptions): PreviewConnectio
       tokens.set(documentId, fresh);
       if (!closed) options.onToken?.(fresh, documentId);
     },
+    head: (data) => (closed || !options.head ? {} : options.head(data)),
   });
 
   if (token) {
@@ -105,7 +115,9 @@ export function connectPreview(options: ConnectPreviewOptions): PreviewConnectio
       .then(async (response) => {
         if (!response.ok) throw new Error(`Genga: the preview answered ${response.status}.`);
         const body = (await response.json()) as { document: PreviewDocument };
-        if (!live && !closed) options.onDraft(body.document.data, documentId);
+        if (live || closed) return;
+        options.onDraft(body.document.data, documentId);
+        if (options.head) applyHead(options.head(body.document.data));
       })
       .catch((error: unknown) => {
         if (!closed) options.onError?.(error instanceof Error ? error : new Error(String(error)));
