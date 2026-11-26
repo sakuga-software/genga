@@ -34,7 +34,7 @@ function query(collection: string, params: Record<string, string>) {
  * The preview shows the published version of each target; a draft target shows nothing on the site.
  */
 export function RelationInput({ label, field, value, onChange, path }: RelationInputProps) {
-  const { errors, readOnly, rememberRelated, schema } = useEditor();
+  const { documentId, errors, readOnly, rememberRelated, schema } = useEditor();
   const ids = idsOf(field, value);
   const [labels, setLabels] = useState<Map<string, TargetLabel>>(new Map());
   const [search, setSearch] = useState('');
@@ -48,6 +48,9 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
   const full = field.multiple ? ids.length >= (field.maxItems ?? 100) : false;
   const missingKey = ids.filter((id) => !labels.has(id)).join(',');
   const searchRun = useRef(0);
+  // A new key after each choice gives a closed combobox with an empty input, and keeps the focus in it.
+  const [round, setRound] = useState(0);
+  const [focusInput, setFocusInput] = useState(false);
 
   useEffect(() => {
     if (!missingKey) return;
@@ -105,11 +108,16 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
       () => {},
     );
     setSearch('');
+    setRound((value) => value + 1);
+    setFocusInput(true);
     setAnnouncement(`${option?.title ?? 'Document'} ajouté.`);
   }
 
   function remove(id: string) {
     commit(ids.filter((item) => item !== id));
+    // The button of the item goes away: the focus goes to the search input.
+    setRound((value) => value + 1);
+    setFocusInput(true);
     setAnnouncement(`${titleOf(id)} retiré.`);
   }
 
@@ -121,7 +129,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
     setAnnouncement(`${titleOf(item)} déplacé en position ${index + offset + 1} sur ${next.length}.`);
   }
 
-  const available = options.filter((option) => !ids.includes(option.id));
+  const available = options.filter((option) => option.id !== documentId && !ids.includes(option.id));
 
   return (
     <div role="group" aria-labelledby={labelId} className="flex flex-col gap-2">
@@ -143,45 +151,47 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
             return (
               <li
                 key={id}
-                className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
               >
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">{titleOf(id)}</span>
-                {current && <StatusChip status={current.status} />}
-                {!readOnly && field.multiple && ids.length > 1 && (
-                  <>
+                <span className="min-w-32 flex-1 break-words text-sm font-medium">{titleOf(id)}</span>
+                <span className="flex flex-wrap items-center gap-1">
+                  {current && <StatusChip status={current.status} />}
+                  {!readOnly && field.multiple && ids.length > 1 && (
+                    <>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Monter ${titleOf(id)}`}
+                        isDisabled={index === 0}
+                        onPress={() => move(index, -1)}
+                      >
+                        <ArrowUp aria-hidden className="size-4" />
+                      </Button>
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`Descendre ${titleOf(id)}`}
+                        isDisabled={index === ids.length - 1}
+                        onPress={() => move(index, 1)}
+                      >
+                        <ArrowDown aria-hidden className="size-4" />
+                      </Button>
+                    </>
+                  )}
+                  {!readOnly && (
                     <Button
                       isIconOnly
                       size="sm"
                       variant="ghost"
-                      aria-label={`Monter ${titleOf(id)}`}
-                      isDisabled={index === 0}
-                      onPress={() => move(index, -1)}
+                      aria-label={`Retirer ${titleOf(id)}`}
+                      onPress={() => remove(id)}
                     >
-                      <ArrowUp aria-hidden className="size-4" />
+                      <X aria-hidden className="size-4" />
                     </Button>
-                    <Button
-                      isIconOnly
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Descendre ${titleOf(id)}`}
-                      isDisabled={index === ids.length - 1}
-                      onPress={() => move(index, 1)}
-                    >
-                      <ArrowDown aria-hidden className="size-4" />
-                    </Button>
-                  </>
-                )}
-                {!readOnly && (
-                  <Button
-                    isIconOnly
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Retirer ${titleOf(id)}`}
-                    onPress={() => remove(id)}
-                  >
-                    <X aria-hidden className="size-4" />
-                  </Button>
-                )}
+                  )}
+                </span>
               </li>
             );
           })}
@@ -190,6 +200,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
 
       {!readOnly && !full && (
         <ComboBox
+          key={round}
           aria-labelledby={labelId}
           aria-describedby={error ? errorId : undefined}
           items={available}
@@ -198,7 +209,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
           selectedKey={null}
           onSelectionChange={(key) => key !== null && choose(String(key))}
           allowsEmptyCollection
-          menuTrigger="focus"
+          menuTrigger="input"
           fullWidth
         >
           <Label className="sr-only">
@@ -206,6 +217,9 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
           </Label>
           <ComboBox.InputGroup>
             <Input
+              // oxlint-disable-next-line jsx-a11y/no-autofocus -- the focus stays where the person chose a document.
+              autoFocus={focusInput}
+              onBlur={() => setFocusInput(false)}
               placeholder={`Rechercher ${target ? `dans ${target.label.toLowerCase()}` : 'un document'}…`}
               aria-invalid={Boolean(error) || undefined}
             />

@@ -3,6 +3,8 @@ import type { SerializedSchema } from '../../config';
 import type { MediaObject, RelatedDocument } from '../../fields/types';
 
 export type EditorContextValue = {
+  /** The document in the editor. A relation field does not offer it as its own target. */
+  documentId: string;
   schema: SerializedSchema;
   media: ReadonlyMap<string, MediaObject>;
   rememberMedia: (media: MediaObject) => void;

@@ -123,6 +123,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
   const selectBlock = useCallback((id: string | null) => setSelectedBlockId(id), []);
 
   const context: EditorContextValue = {
+    documentId: doc.id,
     schema,
     media,
     rememberMedia,
