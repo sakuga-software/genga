@@ -398,7 +398,7 @@ describe('MCP server', () => {
       expect(text(result)).toContain('too_large');
     });
 
-    it('upload_media refuses a URL to a private address', async () => {
+    it('upload_media refuses a URL to a private address or to a port other than 80 and 443', async () => {
       const client = await connect(await createUser(ctx.genga, 'editor'));
       for (const url of [
         'http://127.0.0.1/a.png',
@@ -406,6 +406,8 @@ describe('MCP server', () => {
         'http://169.254.169.254/latest/meta-data/',
         'http://[::1]/a.png',
         'http://localhost/a.png',
+        'http://93.184.216.34:6379/a.png',
+        'https://files.example:8443/a.png',
         'file:///etc/passwd',
       ]) {
         const result = await call(client, 'upload_media', { url });
@@ -414,6 +416,14 @@ describe('MCP server', () => {
       }
       const [{ count }] = await ctx.genga.sql<{ count: number }[]>`SELECT count(*)::int AS count FROM genga_media`;
       expect(count).toBe(0);
+    });
+
+    it('refuses an upload port outside 1 to 65535', () => {
+      for (const port of [0, 65536, 80.5]) {
+        expect(() =>
+          createGenga(testConfig, { databaseUrl: TEST_URL, siteUrl: SITE, mcp: { uploadPorts: [443, port] } }),
+        ).toThrow('mcp.uploadPorts must hold ports from 1 to 65535');
+      }
     });
 
     it('upload_media allows few downloads at once per token', async () => {

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { fetchRemoteFile, isPublicAddress, type LookupAll } from '../src/server/remote-fetch';
+import { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, isPublicAddress, type LookupAll } from '../src/server/remote-fetch';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
 
@@ -145,6 +145,7 @@ describe('fetchRemoteFile', () => {
         timeoutMs: 2000,
         lookup: fakeDns({ 'files.example': ['127.0.0.1'] }),
         isAllowedAddress: LOOPBACK_AS_PUBLIC,
+        allowedPorts: [port, 80, 443],
       }),
     ).rejects.toMatchObject({ code: 'fetch_failed' });
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -164,6 +165,7 @@ describe('fetchRemoteFile', () => {
       maxBytes: 1000,
       lookup: fakeDns({ 'files.example': ['127.0.0.1'] }),
       isAllowedAddress: LOOPBACK_AS_PUBLIC,
+      allowedPorts: [port, 80, 443],
     });
     expect(file.body.equals(PNG)).toBe(true);
     expect(file.filename).toBe('image.png');
@@ -182,6 +184,7 @@ describe('fetchRemoteFile', () => {
           maxBytes: 1000,
           lookup,
           isAllowedAddress: LOOPBACK_AS_PUBLIC,
+          allowedPorts: [port, 80, 443],
         }),
       ).rejects.toMatchObject({ code: 'url_blocked' });
     }
@@ -189,7 +192,7 @@ describe('fetchRemoteFile', () => {
 
   it('follows a redirect to an allowed host, and stops a redirect loop', async () => {
     const lookup = fakeDns({ 'files.example': ['127.0.0.1'] });
-    const allowed = { maxBytes: 1000, lookup, isAllowedAddress: LOOPBACK_AS_PUBLIC };
+    const allowed = { maxBytes: 1000, lookup, isAllowedAddress: LOOPBACK_AS_PUBLIC, allowedPorts: [port] };
     const file = await fetchRemoteFile(`http://files.example:${port}/redirect?to=/image.png`, allowed);
     expect(file.body.equals(PNG)).toBe(true);
     await expect(fetchRemoteFile(`http://files.example:${port}/loop`, allowed)).rejects.toMatchObject({
@@ -202,10 +205,97 @@ describe('fetchRemoteFile', () => {
       maxBytes: 1000,
       lookup: fakeDns({ 'files.example': ['127.0.0.1'] }),
       isAllowedAddress: LOOPBACK_AS_PUBLIC,
+      allowedPorts: [port, 80, 443],
     };
     await expect(fetchRemoteFile(`http://files.example:${port}/big`, allowed)).rejects.toMatchObject({ status: 413 });
     await expect(fetchRemoteFile(`http://files.example:${port}/big-declared`, allowed)).rejects.toMatchObject({
       status: 413,
     });
+  });
+
+  it('allows only ports 80 and 443 by default, before any DNS lookup', async () => {
+    expect(DEFAULT_ALLOWED_PORTS).toEqual([80, 443]);
+    const lookup: LookupAll = async () => {
+      throw new Error('The port check must come before the lookup.');
+    };
+    for (const url of [
+      'http://files.example:8080/a.png',
+      'https://files.example:22/a.png',
+      'http://93.184.216.34:6379/',
+      'https://[2606:4700:4700::1111]:8443/a.png',
+    ]) {
+      const error = await fetchRemoteFile(url, { maxBytes: 1000, lookup }).catch((caught) => caught);
+      expect(error, url).toMatchObject({ status: 400, code: 'url_blocked' });
+      expect(error.message, url).toMatch(/^The port \d+ is not allowed/);
+    }
+  });
+
+  it('lets the default ports through to the address check', async () => {
+    const lookup = fakeDns({ 'internal.example': ['10.0.0.5'] });
+    for (const url of [
+      'http://internal.example/a.png',
+      'http://internal.example:80/a.png',
+      'https://internal.example:443/a.png',
+    ]) {
+      const error = await fetchRemoteFile(url, { maxBytes: 1000, lookup }).catch((caught) => caught);
+      expect(error.message, url).toMatch(/has no public address/);
+    }
+  });
+
+  it('checks the port of each redirect', async () => {
+    let otherHits = 0;
+    const other = http.createServer((_req, res) => {
+      otherHits += 1;
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.end(PNG);
+    });
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve));
+    const otherPort = (other.address() as AddressInfo).port;
+    try {
+      const options = {
+        maxBytes: 1000,
+        lookup: fakeDns({ 'files.example': ['127.0.0.1'] }),
+        isAllowedAddress: LOOPBACK_AS_PUBLIC,
+        allowedPorts: [port],
+      };
+      for (const target of [
+        `http://files.example:${otherPort}/image.png`,
+        `//files.example:${otherPort}/image.png`,
+        `http://127.0.0.1:${otherPort}/image.png`,
+      ]) {
+        const error = await fetchRemoteFile(
+          `http://files.example:${port}/redirect?to=${encodeURIComponent(target)}`,
+          options,
+        ).catch((caught) => caught);
+        expect(error, target).toMatchObject({ code: 'url_blocked' });
+        expect(error.message, target).toContain(`port ${otherPort} is not allowed`);
+      }
+      expect(otherHits).toBe(0);
+      const file = await fetchRemoteFile(`http://files.example:${otherPort}/image.png`, {
+        ...options,
+        allowedPorts: [otherPort],
+      });
+      expect(file.body.equals(PNG)).toBe(true);
+    } finally {
+      await new Promise((resolve) => other.close(resolve));
+    }
+  });
+
+  it('checks the address at each connection, so DNS rebinding cannot reach a private address', async () => {
+    const answers = ['127.0.0.1', '10.0.0.5'];
+    let lookups = 0;
+    const rebinding: LookupAll = async () => {
+      const address = answers[Math.min(lookups, answers.length - 1)];
+      lookups += 1;
+      return [{ address, family: 4 }];
+    };
+    const error = await fetchRemoteFile(`http://files.example:${port}/redirect?to=/image.png`, {
+      maxBytes: 1000,
+      lookup: rebinding,
+      isAllowedAddress: LOOPBACK_AS_PUBLIC,
+      allowedPorts: [port],
+    }).catch((caught) => caught);
+    expect(lookups).toBe(2);
+    expect(error).toMatchObject({ code: 'url_blocked' });
   });
 });

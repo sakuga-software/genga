@@ -3,8 +3,10 @@
 // tarball into a copy of examples/react-router outside the workspace, builds the copy,
 // runs `genga-migrate`, starts the production server and checks a few pages.
 //
-// Usage: DATABASE_URL=postgres://… node scripts/test-pack.mjs [--keep]
+// Usage: DATABASE_URL=postgres://… node scripts/test-pack.mjs [--keep] [--react-router=7|8]
 // Without DATABASE_URL, the script checks the build and the pages of a site with the CMS off.
+// `--react-router=7` installs React Router 7 in the copy, at the range of the peer dependency of
+// `genga`. The default is the React Router 8 of the example.
 import { spawn, execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const keep = process.argv.includes('--keep');
+const reactRouterArg = process.argv.find((arg) => arg.startsWith('--react-router'));
+const reactRouterMajor = reactRouterArg === undefined ? '8' : reactRouterArg.split('=')[1];
+if (!['7', '8'].includes(reactRouterMajor)) throw new Error(`--react-router takes 7 or 8, not ${reactRouterMajor}.`);
 const work = mkdtempSync(path.join(tmpdir(), 'genga-pack-'));
 const app = path.join(work, 'app');
 const port = Number(process.env.PORT ?? 3917);
@@ -68,6 +73,34 @@ function checkEdgeSafe(entry) {
   console.log(`ok genga/remote imports only its own ${seen.size} files`);
 }
 
+/** The range of the `react-router` peer dependency of `genga` for one major, for example `^7.18.4`. */
+function peerRangeOf(major) {
+  const genga = JSON.parse(readFileSync(path.join(root, 'packages/genga/package.json'), 'utf8'));
+  const range = genga.peerDependencies['react-router']
+    .split('||')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`^${major}.`));
+  if (!range) throw new Error(`The react-router peer range of genga has no React Router ${major}.`);
+  return range;
+}
+
+function useReactRouter(pkg, major) {
+  const range = peerRangeOf(major);
+  for (const deps of [pkg.dependencies, pkg.devDependencies]) {
+    for (const name of Object.keys(deps)) {
+      if (name === 'react-router' || name.startsWith('@react-router/')) deps[name] = range;
+    }
+  }
+  // @react-router/dev 7 has the peer typescript ^5.1.0 || ^6.0.0: npm refuses TypeScript 7.
+  if (major === '7') pkg.devDependencies.typescript = '^6.0.3';
+}
+
+function checkInstalledMajor(name, major) {
+  const { version } = JSON.parse(readFileSync(path.join(app, 'node_modules', name, 'package.json'), 'utf8'));
+  if (version.split('.')[0] !== major) throw new Error(`${name} ${version} is installed, expected ${major}.x.`);
+  console.log(`ok ${name} ${version}`);
+}
+
 let server;
 try {
   run('pnpm', ['--filter', 'genga', 'pack', '--pack-destination', work], root);
@@ -87,9 +120,13 @@ try {
   const pkgPath = path.join(app, 'package.json');
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
   pkg.dependencies.genga = `file:../${tarball}`;
+  if (reactRouterMajor !== '8') useReactRouter(pkg, reactRouterMajor);
   writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 
   run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], app);
+  for (const name of ['react-router', '@react-router/dev', '@react-router/serve']) {
+    checkInstalledMajor(name, reactRouterMajor);
+  }
   checkEdgeSafe(path.join(app, 'node_modules/genga/dist/remote.mjs'));
   run('npm', ['run', 'typecheck'], app);
   run('npm', ['run', 'build'], app);
@@ -122,7 +159,7 @@ try {
     if (!home.includes('The CMS is off')) throw new Error('The home page does not say that the CMS is off.');
     await expectStatus(`${base}/admin/login`, 503);
   }
-  console.log('\nThe packed tarball installs, builds and serves.');
+  console.log(`\nThe packed tarball installs, builds and serves with React Router ${reactRouterMajor}.`);
 } finally {
   server?.kill('SIGTERM');
   if (keep) console.log(`Kept ${work}`);

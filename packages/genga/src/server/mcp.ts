@@ -14,7 +14,7 @@ import type { GengaContext } from './context';
 import type { GengaDocuments } from './documents';
 import { GengaError } from './errors';
 import type { GengaMedia } from './media';
-import { fetchRemoteFile, type RemoteFetchOptions } from './remote-fetch';
+import { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, type RemoteFetchOptions } from './remote-fetch';
 
 export type McpOptions = {
   /**
@@ -22,6 +22,8 @@ export type McpOptions = {
    * desktop client) passes. Default: the allowed origins of the admin.
    */
   allowedOrigins?: string[];
+  /** Ports that `upload_media` with a `url` can download from. Default: 80 and 443. */
+  uploadPorts?: number[];
   /** For tests: the DNS lookup and the address check of `upload_media` with a `url`. */
   remoteFetch?: Pick<RemoteFetchOptions, 'lookup' | 'isAllowedAddress' | 'timeoutMs'>;
 };
@@ -130,6 +132,13 @@ function decodeBase64(value: string, maxBytes: number): Buffer {
 export function createMcp({ ctx, documents, media, tokens }: Services, options: McpOptions = {}) {
   const maxBodyBytes = Math.max(JSON_BYTES, Math.ceil(ctx.maxUploadBytes / 3) * 4 + UPLOAD_OVERHEAD_BYTES);
 
+  const uploadPorts = options.uploadPorts ?? DEFAULT_ALLOWED_PORTS;
+  for (const port of uploadPorts) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`Genga: mcp.uploadPorts must hold ports from 1 to 65535, not ${port}.`);
+    }
+  }
+
   const downloads = new Map<string, number>();
 
   async function download(tokenId: string, url: string) {
@@ -143,7 +152,11 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
     }
     downloads.set(tokenId, running + 1);
     try {
-      return await fetchRemoteFile(url, { ...options.remoteFetch, maxBytes: ctx.maxUploadBytes });
+      return await fetchRemoteFile(url, {
+        ...options.remoteFetch,
+        allowedPorts: uploadPorts,
+        maxBytes: ctx.maxUploadBytes,
+      });
     } finally {
       const left = (downloads.get(tokenId) ?? 1) - 1;
       if (left > 0) downloads.set(tokenId, left);
