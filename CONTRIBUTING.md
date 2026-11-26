@@ -63,8 +63,8 @@ request on our own machines.
 
 ## Release
 
-1. Update the version in `packages/genga/package.json` and move the "Unreleased" notes of
-   `CHANGELOG.md` under the new version. Merge to `main`.
+1. Update the version in every `packages/*/package.json`: all packages share one version. Move
+   the "Unreleased" notes of `CHANGELOG.md` under the new version. Merge to `main`.
 2. On GitHub, « Draft a new release ». Create the tag `vX.Y.Z` on the merge commit, then
    « Generate release notes » and « Publish release ».
 3. The release starts `release-npm.yml`: the checks of CI on the tag, the tarball, then the
@@ -77,10 +77,16 @@ publishes nothing, also on a tag. To try a failed release again, use « Re-run j
 a version that npm already has is skipped.
 
 No npm token exists. npm trusts the OIDC token of `release-npm.yml`, in the environment `npm`,
-as the trusted publisher of `genga`. To set it again, a person who can publish `genga` runs, with
-npm 11.5.1 or later:
+as the trusted publisher of each package. To set it again, a person who can publish the package
+runs, with npm 11.5.1 or later:
 
 ```sh
 npm trust github genga --file release-npm.yml \
   --repository sakuga-software/genga --environment npm --allow-publish
+npm trust github @genga-cms/next --file release-npm.yml \
+  --repository sakuga-software/genga --environment npm --allow-publish
 ```
+
+WARNING: a trusted publisher needs a package that exists on npm. Before the first release of a
+new package, the owner of the `@genga-cms` organization must create the package, then set its
+trusted publisher. Otherwise the publication of that package fails.

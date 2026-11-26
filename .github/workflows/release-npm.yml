@@ -1,7 +1,8 @@
 name: Release npm
 
-# `genga` goes to npm from the tag of a release, with a provenance attestation that ties the
-# tarball to the commit and the run that built it.
+# `genga` and `@genga-cms/next` go to npm from the tag of a release, with a provenance
+# attestation that ties each tarball to the commit and the run that built it. All packages
+# have one version (lockstep).
 #
 # A release published on GitHub starts this workflow. A tag pushed alone starts nothing: a person
 # creates the release and its tag `vx.y.z` in one step, in the interface of GitHub.
@@ -46,22 +47,28 @@ jobs:
 
       # npm keeps a number that was published one time for ever. A tag that names another version
       # than the package would publish a number that nobody chose.
-      - name: The tag and the package name the same version
+      - name: The tag and every package name the same version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          declared=$(node -p "require('./packages/genga/package.json').version")
-          if [ "$TAG" != "v$declared" ]; then
-            echo "::error::The tag is $TAG and packages/genga/package.json says $declared."
-            exit 1
-          fi
+          for manifest in packages/*/package.json; do
+            declared=$(node -p "require('./$manifest').version")
+            if [ "$TAG" != "v$declared" ]; then
+              echo "::error::The tag is $TAG and $manifest says $declared."
+              exit 1
+            fi
+          done
 
-      - run: pnpm --filter genga build
+      - run: pnpm --filter genga --filter @genga-cms/next build
 
-      - name: Pack the package
-        run: pnpm --filter genga pack --pack-destination "$RUNNER_TEMP/tarballs"
+      # `pnpm pack` turns the `workspace:` ranges into the published versions.
+      - name: Pack the packages
+        run: |
+          set -euo pipefail
+          pnpm --filter genga pack --pack-destination "$RUNNER_TEMP/tarballs"
+          pnpm --filter @genga-cms/next pack --pack-destination "$RUNNER_TEMP/tarballs"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -104,25 +111,30 @@ jobs:
           node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$(npm --version)" \
             || { echo "::error::Trusted publishing needs npm 11.5.1 or later, and npm is $(npm --version)."; exit 1; }
 
-      # WARNING: npm accepts the OIDC token of this run only because the trusted publisher of
-      # `genga` is `release-npm.yml` of this repository, in the environment `npm`.
-      # See CONTRIBUTING.md.
-      - name: Publish the tarball
+      # WARNING: npm accepts the OIDC token of this run only for a package whose trusted publisher
+      # is `release-npm.yml` of this repository, in the environment `npm`. Each package needs
+      # its own trusted publisher. See CONTRIBUTING.md.
+      - name: Publish the tarballs
         env:
           FROM_A_RELEASE: ${{ github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v') }}
         run: |
           set -euo pipefail
+          # The core first: the adapters have a peer dependency on its version.
           # `./` first: else npm reads `tarballs/x.tgz` as the GitHub repository `tarballs/x.tgz`.
-          tarball=$(find ./tarballs -maxdepth 1 -name 'genga-[0-9]*.tgz' | head -n 1)
-          if [ -z "$tarball" ]; then
-            echo "::error::No tarball of genga."
-            exit 1
-          fi
-          version=$(tar -xzOf "$tarball" package/package.json | node -p "JSON.parse(require('fs').readFileSync(0)).version")
-          if [ "$FROM_A_RELEASE" != true ]; then
-            npm publish "$tarball" --access public --dry-run
-          elif npm view "genga@$version" version >/dev/null 2>&1; then
-            echo "genga@$version is already on npm"
-          else
-            npm publish "$tarball" --access public --provenance
-          fi
+          for pattern in 'genga-[0-9]*.tgz' 'genga-cms-next-[0-9]*.tgz'; do
+            tarball=$(find ./tarballs -maxdepth 1 -name "$pattern" | head -n 1)
+            if [ -z "$tarball" ]; then
+              echo "::error::No tarball matches $pattern."
+              exit 1
+            fi
+            manifest=$(tar -xzOf "$tarball" package/package.json)
+            name=$(node -p "JSON.parse(process.argv[1]).name" "$manifest")
+            version=$(node -p "JSON.parse(process.argv[1]).version" "$manifest")
+            if [ "$FROM_A_RELEASE" != true ]; then
+              npm publish "$tarball" --access public --dry-run
+            elif npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm"
+            else
+              npm publish "$tarball" --access public --provenance
+            fi
+          done

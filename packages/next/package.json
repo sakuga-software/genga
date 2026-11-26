@@ -1,0 +1,71 @@
+{
+  "name": "@genga-cms/next",
+  "version": "0.2.0",
+  "description": "Genga for the Next.js App Router: published content in Server Components, cache tags revalidated by signed webhooks, and the live preview with Draft Mode.",
+  "keywords": [
+    "cms",
+    "draft-mode",
+    "genga",
+    "headless",
+    "live-preview",
+    "nextjs",
+    "react-server-components"
+  ],
+  "homepage": "https://github.com/sakuga-software/genga/tree/main/packages/next#readme",
+  "bugs": {
+    "url": "https://github.com/sakuga-software/genga/issues"
+  },
+  "license": "MIT",
+  "author": "Sakuga Software",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sakuga-software/genga.git",
+    "directory": "packages/next"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./client": {
+      "types": "./dist/client.d.mts",
+      "default": "./dist/client.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "genga": "workspace:*",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsdown": "^0.23.7",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  },
+  "peerDependencies": {
+    "genga": "workspace:~",
+    "next": ">=16.4.0 <17",
+    "react": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}
