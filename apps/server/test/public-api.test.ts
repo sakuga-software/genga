@@ -75,6 +75,7 @@ async function publishPost(user: Awaited<ReturnType<typeof editor>>, data: Recor
 function start(publicApi: PublicApiOptions = {}) {
   return createGenga(config, {
     databaseUrl: TEST_URL,
+    scheduler: false,
     siteUrl: PUBLIC_URL,
     mediaDir,
     previewOrigins: [SITE],

@@ -58,6 +58,7 @@ export function useGenga(): Context {
       siteUrl: SITE,
       mediaDir: context.mediaDir,
       secureCookies: false,
+      scheduler: false,
       logger: { info: () => {}, warn: () => {}, error: console.error },
     });
     await context.genga.ready();

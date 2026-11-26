@@ -1,10 +1,19 @@
+import type { Sql, TransactionSql } from 'postgres';
 import { can, isOwnOnly, type DocumentAction } from '../access';
 import { RESERVED_SLUGS, type CollectionConfig } from '../config';
 import { defaultValues, SLUG_PATTERN, tolerantRead, validate } from '../fields/schema';
 import { collectMediaIds, collectRelationIds } from '../populate';
 import { slugify } from '../slugify';
 import { isUuid } from '../uuid';
-import type { AdminDocument, DocumentStatus, DocumentSummary, PublicUser, VersionSummary } from '../types';
+import type {
+  AdminDocument,
+  DocumentSchedule,
+  DocumentStatus,
+  DocumentSummary,
+  PublicUser,
+  ScheduleAction,
+  VersionSummary,
+} from '../types';
 import { audit } from './auth';
 import type { GengaContext } from './context';
 import { badRequest, forbidden, GengaError, isUniqueViolation, notFound } from './errors';
@@ -45,6 +54,34 @@ function statusOf(row: Pick<DocumentRow, 'published_version_id' | 'published_rev
 
 function conflict(draftRev: number | null) {
   return new GengaError(409, 'conflict', 'Ce document a changé depuis votre dernière lecture.', { draftRev });
+}
+
+type ScheduleRow = { action: ScheduleAction; run_at: Date; failed_at: Date | null; last_error: string | null };
+
+/** `scheduled`: the runner acts for the user who saved the schedule, and only if the row is still due. */
+type RunOptions = { scheduled?: boolean };
+
+/** A scheduled run found its schedule cleared or moved after the runner listed it. */
+const NOT_DUE = Symbol('not due');
+
+function toSchedule(rows: ScheduleRow[]): DocumentSchedule {
+  const schedule: DocumentSchedule = { publish: null, unpublish: null };
+  for (const row of rows) {
+    schedule[row.action] = {
+      at: row.run_at.toISOString(),
+      failedAt: row.failed_at?.toISOString() ?? null,
+      error: row.last_error,
+    };
+  }
+  return schedule;
+}
+
+function scheduleDate(value: unknown, label: string): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const date = typeof value === 'string' ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) throw badRequest(`Date de ${label} invalide.`);
+  return date;
 }
 
 function escapeLike(value: string) {
@@ -160,6 +197,30 @@ export function createDocuments(ctx: GengaContext) {
     return result;
   }
 
+  async function scheduleOf(id: string, db: Sql | TransactionSql = sql): Promise<DocumentSchedule> {
+    const rows = await db<ScheduleRow[]>`
+      SELECT action, run_at, failed_at, last_error FROM genga_schedules WHERE document_id = ${id}
+    `;
+    return toSchedule(rows);
+  }
+
+  /**
+   * Deletes the schedule row of `action` in the transaction of the action. A manual action
+   * clears it. A scheduled run returns false when the row is no longer due.
+   */
+  async function consumeSchedule(tx: TransactionSql, id: string, action: ScheduleAction, options: RunOptions) {
+    if (!options.scheduled) {
+      await tx`DELETE FROM genga_schedules WHERE document_id = ${id} AND action = ${action}`;
+      return true;
+    }
+    const due = await tx`
+      DELETE FROM genga_schedules
+      WHERE document_id = ${id} AND action = ${action} AND run_at <= now() AND failed_at IS NULL
+      RETURNING 1
+    `;
+    return due.length > 0;
+  }
+
   async function get(user: PublicUser, id: string): Promise<AdminDocument> {
     const row = await findRow(id);
     assertCan(user, 'read', row);
@@ -180,6 +241,7 @@ export function createDocuments(ctx: GengaContext) {
       related,
       canPublish: can(user, 'publish', collection.access, { createdBy: row.created_by }),
       canDelete: can(user, 'delete', collection.access, { createdBy: row.created_by }),
+      schedule: await scheduleOf(row.id),
     };
   }
 
@@ -298,15 +360,17 @@ export function createDocuments(ctx: GengaContext) {
     };
   }
 
-  async function publish(user: PublicUser, id: string, draftRev: number) {
+  /** Without `draftRev` (a scheduled run), the draft of the moment is published. */
+  async function publishDocument(user: PublicUser, id: string, draftRev: number | null, options: RunOptions = {}) {
     if (!isUuid(id)) throw notFound();
     const result = await sql.begin(async (tx) => {
       const [row] = await tx<DocumentRow[]>`
         SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
       `;
       if (!row) throw notFound('Document introuvable.');
+      if (!(await consumeSchedule(tx, id, 'publish', options))) return NOT_DUE;
       assertCan(user, 'publish', row);
-      if (row.draft_rev !== draftRev) throw conflict(row.draft_rev);
+      if (draftRev !== null && row.draft_rev !== draftRev) throw conflict(row.draft_rev);
       const collection = collectionOf(row.collection);
       const checked = validate(collection.fields, row.draft, 'publish', ctx.blocks);
       if (!checked.ok)
@@ -406,13 +470,18 @@ export function createDocuments(ctx: GengaContext) {
         previewPath: collection.path(slug),
       };
     });
+    if (result === NOT_DUE) return NOT_DUE;
     const { events, ...published } = result;
     invalidatePublished(ctx, published.collection);
     try {
       await audit(ctx, user.id, 'document.publish', {
         collection: published.collection,
         documentId: id,
-        detail: { versionId: published.versionId, previousSlug: published.previousSlug },
+        detail: {
+          versionId: published.versionId,
+          previousSlug: published.previousSlug,
+          ...(options.scheduled && { scheduled: true }),
+        },
       });
     } finally {
       await ctx.events.dispatch(events);
@@ -424,13 +493,21 @@ export function createDocuments(ctx: GengaContext) {
    * Takes the document offline in one transaction. An event goes to the outbox only when the
    * document was live: the events endpoint is public, and a draft slug must stay private.
    */
-  async function takeOffline(user: PublicUser, id: string, action: 'publish' | 'delete', remove: boolean) {
+  async function takeOffline(
+    user: PublicUser,
+    id: string,
+    action: 'publish' | 'delete',
+    remove: boolean,
+    options: RunOptions = {},
+  ) {
     if (!isUuid(id)) throw notFound();
-    const { row, events } = await sql.begin(async (tx) => {
+    const result = await sql.begin(async (tx) => {
       const [row] = await tx<DocumentRow[]>`
         SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
       `;
       if (!row) throw notFound('Document introuvable.');
+      if (remove) await tx`DELETE FROM genga_schedules WHERE document_id = ${id}`;
+      else if (!(await consumeSchedule(tx, id, 'unpublish', options))) return NOT_DUE;
       assertCan(user, action, row);
       await tx`
         UPDATE genga_documents
@@ -453,20 +530,93 @@ export function createDocuments(ctx: GengaContext) {
       await ctx.events.record(tx, events);
       return { row, events };
     });
+    if (result === NOT_DUE) return NOT_DUE;
+    const { row, events } = result;
     invalidatePublished(ctx, row.collection);
     try {
       await audit(ctx, user.id, remove ? 'document.delete' : 'document.unpublish', {
         collection: row.collection,
         documentId: id,
+        ...(options.scheduled && { detail: { scheduled: true } }),
       });
     } finally {
       await ctx.events.dispatch(events);
     }
+    return null;
+  }
+
+  async function publish(user: PublicUser, id: string, draftRev: number) {
+    const result = await publishDocument(user, id, draftRev);
+    if (result === NOT_DUE) throw new Error('A manual publish has no schedule to wait for.');
+    return result;
   }
 
   async function unpublish(user: PublicUser, id: string) {
     await takeOffline(user, id, 'publish', false);
     return { status: 'draft' as DocumentStatus };
+  }
+
+  /**
+   * For the runner: does a due scheduled action as the user who saved it. Returns false when
+   * the schedule was cleared, moved or done after the runner listed it.
+   */
+  async function runScheduled(user: PublicUser, id: string, action: ScheduleAction): Promise<boolean> {
+    const result =
+      action === 'publish'
+        ? await publishDocument(user, id, null, { scheduled: true })
+        : await takeOffline(user, id, 'publish', false, { scheduled: true });
+    return result !== NOT_DUE;
+  }
+
+  /**
+   * Sets or clears the dates of a scheduled publish and unpublish. A key that is absent stays as
+   * it is, and `null` clears it. Saving a date again clears the error of a failed run.
+   */
+  async function schedule(user: PublicUser, id: string, input: { publishAt?: unknown; unpublishAt?: unknown }) {
+    if (!isUuid(id)) throw notFound();
+    const publishAt = scheduleDate(input.publishAt, 'publication');
+    const unpublishAt = scheduleDate(input.unpublishAt, 'dépublication');
+    const result = await sql.begin(async (tx) => {
+      const [row] = await tx<DocumentRow[]>`
+        SELECT * FROM genga_documents WHERE id = ${id} AND deleted_at IS NULL FOR UPDATE
+      `;
+      if (!row) throw notFound('Document introuvable.');
+      assertCan(user, 'publish', row);
+      const [{ now }] = await tx<{ now: Date }[]>`SELECT now()`;
+      const current = await scheduleOf(id, tx);
+      const nextPublish = publishAt === undefined ? current.publish && new Date(current.publish.at) : publishAt;
+      const nextUnpublish =
+        unpublishAt === undefined ? current.unpublish && new Date(current.unpublish.at) : unpublishAt;
+      if (publishAt && publishAt <= now) throw badRequest('Choisissez une date de publication dans le futur.');
+      if (unpublishAt && unpublishAt <= now) throw badRequest('Choisissez une date de dépublication dans le futur.');
+      if (nextPublish && nextUnpublish && nextUnpublish <= nextPublish) {
+        throw badRequest('La dépublication doit venir après la publication.');
+      }
+      for (const [action, date] of [
+        ['publish', publishAt],
+        ['unpublish', unpublishAt],
+      ] as const) {
+        if (date === undefined) continue;
+        if (date === null) {
+          await tx`DELETE FROM genga_schedules WHERE document_id = ${id} AND action = ${action}`;
+          continue;
+        }
+        await tx`
+          INSERT INTO genga_schedules (document_id, action, run_at, created_by)
+          VALUES (${id}, ${action}, ${date}, ${user.id})
+          ON CONFLICT (document_id, action) DO UPDATE
+          SET run_at = EXCLUDED.run_at, created_by = EXCLUDED.created_by, created_at = now(),
+            failed_at = NULL, last_error = NULL
+        `;
+      }
+      return { collection: row.collection, schedule: await scheduleOf(id, tx) };
+    });
+    await audit(ctx, user.id, 'document.schedule', {
+      collection: result.collection,
+      documentId: id,
+      detail: { publishAt: result.schedule.publish?.at ?? null, unpublishAt: result.schedule.unpublish?.at ?? null },
+    });
+    return { schedule: result.schedule };
   }
 
   async function saveVersion(user: PublicUser, id: string, note: unknown) {
@@ -552,6 +702,22 @@ export function createDocuments(ctx: GengaContext) {
     await takeOffline(user, id, 'delete', true);
   }
 
+  /** For the runner: records why a scheduled action cannot run. It stays until the schedule is saved again. */
+  async function failSchedule(id: string, action: ScheduleAction, message: string) {
+    const rows = await sql<{ collection: string; created_by: string | null }[]>`
+      UPDATE genga_schedules s SET failed_at = now(), last_error = ${message}
+      FROM genga_documents d
+      WHERE s.document_id = ${id} AND s.action = ${action} AND s.failed_at IS NULL AND d.id = s.document_id
+      RETURNING d.collection, s.created_by
+    `;
+    if (!rows[0]) return;
+    await audit(ctx, rows[0].created_by, 'document.schedule_failed', {
+      collection: rows[0].collection,
+      documentId: id,
+      detail: { action, error: message },
+    });
+  }
+
   return {
     list,
     counts,
@@ -562,6 +728,9 @@ export function createDocuments(ctx: GengaContext) {
     saveDraft,
     publish,
     unpublish,
+    schedule,
+    runScheduled,
+    failSchedule,
     saveVersion,
     versions,
     restore,

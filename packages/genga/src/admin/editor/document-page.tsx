@@ -27,6 +27,7 @@ import { SplitPane } from '../ui/split-pane';
 import { EditorContext, type EditorContextValue } from './editor-context';
 import { FieldInput } from './field-input';
 import { PreviewPane } from './preview-pane';
+import { ScheduleControl, ScheduleSummary } from './schedule-control';
 import { PREVIEW_TOKEN_PARAM } from '../../preview/bridge';
 import { issuesToErrors, useDraft, type SaveState } from './use-draft';
 import { VersionsDrawer } from './versions-drawer';
@@ -197,6 +198,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
         publishedSlug: result.slug,
         slug: result.slug,
         publishedAt: result.publishedAt,
+        schedule: { ...current.schedule, publish: null },
       }));
       setSlugTouched(true);
       const message = result.previousSlug
@@ -227,7 +229,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
     try {
       const result = await apiRequest<{ status: DocumentStatus }>(`documents/${doc.id}/unpublish`, { method: 'POST' });
       draft.setStatus(result.status);
-      setDoc((current) => ({ ...current, publishedAt: null }));
+      setDoc((current) => ({ ...current, publishedAt: null, schedule: { ...current.schedule, unpublish: null } }));
       setAnnouncement('Dépublié : la page n’est plus visible sur le site.');
       toast('Dépublié');
     } catch (error) {
@@ -323,6 +325,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
             <div className="mt-0.5 flex flex-wrap items-center gap-3">
               <StatusChip status={draft.status} />
               <SaveIndicator state={draft.saveState} savedAt={draft.savedAt} />
+              <ScheduleSummary schedule={doc.schedule} />
             </div>
           </div>
           <Button variant="ghost" size="sm" onPress={() => setVersionsOpen(true)}>
@@ -330,6 +333,15 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
           </Button>
           {doc.canPublish ? (
             <>
+              <ScheduleControl
+                documentId={doc.id}
+                schedule={doc.schedule}
+                onSaved={(schedule, message) => {
+                  setDoc((current) => ({ ...current, schedule }));
+                  setAnnouncement(message);
+                  toast.success(message);
+                }}
+              />
               {draft.status !== 'draft' && (
                 <Button variant="secondary" size="sm" onPress={unpublish} isPending={busy === 'unpublish'}>
                   Dépublier

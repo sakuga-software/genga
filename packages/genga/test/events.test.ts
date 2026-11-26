@@ -93,6 +93,7 @@ describe('publish events', () => {
   function start(options: Partial<GengaOptions> = {}) {
     const genga = createGenga(testConfig, {
       databaseUrl: TEST_URL,
+      scheduler: false,
       siteUrl: SITE,
       mediaDir,
       secureCookies: false,

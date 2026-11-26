@@ -16,6 +16,7 @@ beforeAll(async () => {
   mediaDir = await mkdtemp(path.join(tmpdir(), 'genga-source-'));
   genga = createGenga(testConfig, {
     databaseUrl: TEST_URL,
+    scheduler: false,
     siteUrl: SITE,
     mediaDir,
     secureCookies: false,
