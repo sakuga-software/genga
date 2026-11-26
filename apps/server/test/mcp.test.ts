@@ -3,7 +3,9 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { auth, type OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { OAuthClientInformationMixed, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createGenga, type Genga } from 'genga/server';
@@ -72,7 +74,7 @@ beforeAll(async () => {
     logger: { info: () => {}, warn: () => {}, error: console.error },
   });
   await genga.ready();
-  await genga.sql`TRUNCATE genga_audit, genga_api_tokens, genga_documents, genga_users CASCADE`;
+  await genga.sql`TRUNCATE genga_oauth_clients, genga_audit, genga_api_tokens, genga_documents, genga_users CASCADE`;
 });
 
 afterAll(async () => {
@@ -136,8 +138,69 @@ describe('MCP endpoint of the headless server', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
     });
     expect(response.status).toBe(401);
-    expect(response.headers.get('www-authenticate')).toBe('Bearer realm="genga"');
+    expect(response.headers.get('www-authenticate')).toBe(
+      `Bearer realm="genga", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource/agents", scope="read write"`,
+    );
     expect((await fetch(`${baseUrl}/mcp`, { method: 'POST' })).status).toBe(404);
+  });
+
+  it('signs in an SDK client with OAuth over HTTP, on the path of the setting', async () => {
+    const resource = await fetch(`${baseUrl}/.well-known/oauth-protected-resource/agents`);
+    expect(await resource.json()).toMatchObject({ resource: `${baseUrl}/agents`, authorization_servers: [baseUrl] });
+
+    const { user } = await genga.auth.invite('mcp-oauth@genga.test', 'OAuth', 'editor');
+    let saved: OAuthTokens | undefined;
+    let client: OAuthClientInformationMixed | undefined;
+    let verifier = '';
+    let authorizationUrl: URL | undefined;
+    const provider: OAuthClientProvider = {
+      redirectUrl: 'http://127.0.0.1:33418/callback',
+      clientMetadata: {
+        client_name: 'E2E',
+        redirect_uris: ['http://127.0.0.1:33418/callback'],
+        token_endpoint_auth_method: 'none',
+      },
+      clientInformation: () => client,
+      saveClientInformation: (info) => {
+        client = info;
+      },
+      tokens: () => saved,
+      saveTokens: (tokens) => {
+        saved = tokens;
+      },
+      redirectToAuthorization: (url) => {
+        authorizationUrl = url;
+      },
+      saveCodeVerifier: (value) => {
+        verifier = value;
+      },
+      codeVerifier: () => verifier,
+    };
+    expect(await auth(provider, { serverUrl: `${baseUrl}/agents` })).toBe('REDIRECT');
+    const url = authorizationUrl as URL;
+    const cookie = (await genga.auth.createSession(user.id, new Request(baseUrl))).split(';')[0];
+    const answer = await genga.admin
+      .oauthAuthorizeAction(
+        new Request(url, {
+          method: 'POST',
+          headers: { cookie, origin: baseUrl, 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams([
+            ['decision', 'allow'],
+            ['scope', 'read'],
+          ]),
+        }),
+      )
+      .catch((thrown: unknown) => thrown);
+    const code = new URL((answer as Response).headers.get('location') ?? '').searchParams.get('code') ?? '';
+    expect(await auth(provider, { serverUrl: `${baseUrl}/agents`, authorizationCode: code })).toBe('AUTHORIZED');
+
+    const mcp = new Client({ name: 'genga-e2e-oauth', version: '1.0.0' });
+    await mcp.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/agents`), { authProvider: provider }));
+    try {
+      expect((await mcp.listTools()).tools.length).toBe(13);
+    } finally {
+      await mcp.close();
+    }
   });
 
   it('is off when the mcp option is false', async () => {

@@ -4,6 +4,7 @@ export { CollectionPage } from './pages/collection';
 export { DashboardPage } from './pages/dashboard';
 export { LoginPage } from './pages/login';
 export { MediaPage } from './pages/media';
+export { OAuthConsentPage } from './pages/oauth-consent';
 export { SetupPage } from './pages/setup';
 export { TokensPage } from './pages/tokens';
 export { UsersPage } from './pages/users';

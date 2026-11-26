@@ -95,6 +95,7 @@ The images are for `linux/amd64` and `linux/arm64`, with provenance and SBOM att
 | `GENGA_SITE_URL`         | none                                     | The public site, for the link "Voir le site" of the admin. Without it, the admin hides the link.                                         |
 | `GENGA_MCP`              | `on`                                     | `off` turns the [MCP endpoint](./mcp.md) off.                                                                                            |
 | `GENGA_MCP_PATH`         | `/mcp`                                   | The path of the MCP endpoint, one segment.                                                                                               |
+| `GENGA_MCP_OAUTH`        | `on`                                     | `off` turns the [OAuth sign-in](./mcp.md#connect-with-oauth) of MCP clients off. Personal tokens keep working.                           |
 | `GENGA_MCP_UPLOAD_PORTS` | `80,443`                                 | The ports that `upload_media` with a `url` can download from, comma-separated.                                                           |
 | `GENGA_WEBHOOKS`         | none                                     | A JSON array of `{ "url", "secret", "events" }`: the receivers of the [publish webhooks](./events.md). The secret is not `GENGA_SECRET`. |
 | `PORT`                   | `3000`                                   | The port in the container.                                                                                                               |

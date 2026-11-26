@@ -82,6 +82,7 @@ export function createUsers(ctx: GengaContext, auth: GengaAuth) {
         if (input.disabled) {
           await tx`DELETE FROM genga_sessions WHERE user_id = ${id}`;
           await tx`UPDATE genga_api_tokens SET revoked_at = now() WHERE user_id = ${id} AND revoked_at IS NULL`;
+          await tx`UPDATE genga_oauth_grants SET revoked_at = now() WHERE user_id = ${id} AND revoked_at IS NULL`;
         }
       }
       const [updated] = await tx<Parameters<typeof toPublicUser>[0][]>`

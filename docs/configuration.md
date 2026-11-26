@@ -185,6 +185,7 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `logger`              | `console`                         | `{ info, warn, error }`.                                                                              |
 | `mcp`                 | off in `genga.handle`             | `{ path, allowedOrigins }` turns the [MCP endpoint](./mcp.md) on. `path` defaults to `/mcp`.          |
 | `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the MCP endpoint. A request without `Origin` passes.                    |
+| `mcp.oauth`           | on with `mcp`                     | OAuth sign-in for MCP clients ([MCP OAuth](./mcp.md#connect-with-oauth)). `false` keeps tokens only.  |
 | `webhooks`            | `GENGA_WEBHOOKS`                  | `[{ url, secret, events? }]`: receivers of the signed [publish webhooks](./events.md).                |
 | `webhookDelivery`     | `{}`                              | `{ fetch, pollMs, timeoutMs }` of the webhook sender.                                                 |
 | `scheduler`           | `{ intervalMs: 30000 }`           | The runner of [scheduled publish](#scheduled-publish). `false` turns its timer off.                   |
@@ -253,12 +254,14 @@ AWS Signature Version 4 (`aws4fetch`).
 admin page. It returns a `Response`, or `null` for a path that Genga does not own, so the app
 answers it.
 
-| Path                 | Content                                    | Default |
-| -------------------- | ------------------------------------------ | ------- |
-| `<adminPath>/api/**` | Admin JSON API (session cookie)            | on      |
-| `<mediaPath>/**`     | Media files                                | on      |
-| `/api/v1/**`         | [Public API](./api.md) and preview drafts  | off     |
-| `<mcp.path>`         | [MCP endpoint](./mcp.md) (Streamable HTTP) | off     |
+| Path                      | Content                                    | Default    |
+| ------------------------- | ------------------------------------------ | ---------- |
+| `<adminPath>/api/**`      | Admin JSON API (session cookie)            | on         |
+| `<mediaPath>/**`          | Media files                                | on         |
+| `/api/v1/**`              | [Public API](./api.md) and preview drafts  | off        |
+| `<mcp.path>`              | [MCP endpoint](./mcp.md) (Streamable HTTP) | off        |
+| `/.well-known/oauth-*`    | OAuth metadata of the MCP endpoint         | with `mcp` |
+| `<adminPath>/api/oauth/*` | OAuth token, registration, revocation      | with `mcp` |
 
 ```ts
 // Hono
@@ -316,10 +319,19 @@ route('/admin', 'routes/admin/shell.tsx', [
 ]),
 route('/media/*', 'routes/media.ts'), // genga.handle(request)
 route('/mcp', 'routes/mcp.ts'), // optional: genga.handle(request) with the mcp option, see docs/mcp.md
+// With the mcp option, OAuth needs these two routes too:
+route('/.well-known/*', 'routes/well-known.ts'), // genga.handle(request)
+route('/admin/oauth/authorize', 'routes/admin/oauth-authorize.tsx'), // the consent page, outside the app layout
 ```
 
+The consent page (`OAuthConsentPage`) has the loader `genga.admin.oauthAuthorizeLoader(request)`
+and the action `genga.admin.oauthAuthorizeAction(request)`. Put it in the `shell.tsx` route, next
+to `login`. The OAuth endpoints under `<adminPath>/api/oauth/*` go through the admin API route,
+so that route must call `genga.handle`, not the deprecated `genga.api`.
+
 The `tokens` page (`TokensPage`, loader `genga.admin.tokens(request)`) lets each user create
-and revoke the personal access tokens of the [MCP endpoint](./mcp.md).
+and revoke the personal access tokens of the [MCP endpoint](./mcp.md), and disconnect the MCP
+clients that signed in with OAuth.
 
 To mount the admin elsewhere, set `adminPath` (or `GENGA_ADMIN_PATH`), for example `/cms`,
 and use the same path in `routes.ts`: `route('/cms/api/*', …)` and `route('/cms', …)`. The

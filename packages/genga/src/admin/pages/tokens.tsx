@@ -19,16 +19,11 @@ import { Copy } from 'lucide-react';
 import { Form, useLoaderData, useRevalidator } from 'react-router';
 import { API_SCOPES, type ApiScope } from '../../access';
 import { ApiError, apiRequest } from '../../client/api';
-import type { ApiTokenItem, TokensPageData } from '../../types';
+import type { ApiTokenItem, OAuthGrantItem, TokensPageData } from '../../types';
 import { formatDate, formatDateTime } from '../components/format';
 import { LiveRegion } from '../components/live-region';
 import { PageHeader } from '../components/page-header';
-
-const SCOPE_LABELS: Record<ApiScope, { label: string; description: string }> = {
-  read: { label: 'Lecture', description: 'Lire les collections, les documents, les versions et les médias.' },
-  write: { label: 'Écriture', description: 'Créer et modifier des brouillons, envoyer des médias.' },
-  publish: { label: 'Publication', description: 'Publier et dépublier des documents.' },
-};
+import { SCOPE_LABELS } from './scope-labels';
 
 const EXPIRY_OPTIONS = [
   { id: '30', label: '30 jours', days: 30 },
@@ -167,16 +162,80 @@ function TokensTable({
   );
 }
 
+function GrantsTable({
+  label,
+  grants,
+  showOwner,
+  onRevoke,
+}: {
+  label: string;
+  grants: OAuthGrantItem[];
+  showOwner: boolean;
+  onRevoke: (grant: OAuthGrantItem) => void;
+}) {
+  return (
+    <Table>
+      <Table.ScrollContainer>
+        <Table.Content aria-label={label} className="min-w-[760px]">
+          <Table.Header>
+            <Table.Column isRowHeader>Application</Table.Column>
+            {showOwner ? <Table.Column>Personne</Table.Column> : null}
+            <Table.Column>Portées</Table.Column>
+            <Table.Column>Dernière utilisation</Table.Column>
+            <Table.Column>Connectée le</Table.Column>
+            <Table.Column>Actions</Table.Column>
+          </Table.Header>
+          <Table.Body>
+            {grants.map((grant) => (
+              <Table.Row key={grant.id} id={grant.id}>
+                <Table.Cell>
+                  <span className="font-medium">{grant.clientName}</span>
+                  <span className="block text-xs text-[var(--muted)]">
+                    {grant.clientHost ?? 'Enregistrée automatiquement'}
+                  </span>
+                </Table.Cell>
+                {showOwner ? <Table.Cell>{grant.user.name || grant.user.email}</Table.Cell> : null}
+                <Table.Cell>
+                  <ScopeChips scopes={grant.scopes} />
+                </Table.Cell>
+                <Table.Cell>{grant.lastUsedAt ? formatDateTime(grant.lastUsedAt) : 'Jamais'}</Table.Cell>
+                <Table.Cell>{formatDate(grant.createdAt)}</Table.Cell>
+                <Table.Cell>
+                  <Button
+                    size="sm"
+                    variant="danger-soft"
+                    onPress={() => onRevoke(grant)}
+                    aria-label={`Déconnecter ${grant.clientName}${showOwner ? ` de ${grant.user.email}` : ''}`}
+                  >
+                    Déconnecter
+                  </Button>
+                </Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table.Content>
+      </Table.ScrollContainer>
+    </Table>
+  );
+}
+
+type Revocation = { kind: 'token'; item: ApiTokenItem } | { kind: 'grant'; item: OAuthGrantItem };
+
+function revocationName(revocation: Revocation | null): string {
+  if (!revocation) return '';
+  return revocation.kind === 'token' ? revocation.item.name : revocation.item.clientName;
+}
+
 export function TokensPage() {
-  const { tokens, allTokens, currentUserId, canPublish } = useLoaderData() as TokensPageData;
+  const { tokens, allTokens, grants, allGrants, mcpUrl, currentUserId, canPublish } = useLoaderData() as TokensPageData;
   const revalidator = useRevalidator();
   const [scopes, setScopes] = useState<string[]>(['read', 'write']);
   const [expiry, setExpiry] = useState<string>('90');
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The dialog keeps the token after it closes, so its title stays during the exit animation.
-  const [confirm, setConfirm] = useState<ApiTokenItem | null>(null);
+  // The dialog keeps its target after it closes, so its title stays during the exit animation.
+  const [confirm, setConfirm] = useState<Revocation | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
@@ -204,11 +263,16 @@ export function TokensPage() {
     }
   }
 
-  async function revoke(token: ApiTokenItem) {
+  async function revoke(revocation: Revocation) {
     setRevoking(true);
     try {
-      await apiRequest(`tokens/${token.id}`, { method: 'DELETE' });
-      toast.success(`Le jeton « ${token.name} » est révoqué.`);
+      if (revocation.kind === 'token') {
+        await apiRequest(`tokens/${revocation.item.id}`, { method: 'DELETE' });
+        toast.success(`Le jeton « ${revocation.item.name} » est révoqué.`);
+      } else {
+        await apiRequest(`grants/${revocation.item.id}`, { method: 'DELETE' });
+        toast.success(`« ${revocation.item.clientName} » est déconnectée.`);
+      }
       setConfirmOpen(false);
       revalidator.revalidate();
     } catch (caught) {
@@ -218,19 +282,41 @@ export function TokensPage() {
     }
   }
 
-  function askRevoke(token: ApiTokenItem) {
-    setConfirm(token);
+  function askRevoke(revocation: Revocation) {
+    setConfirm(revocation);
     setConfirmOpen(true);
   }
 
+  const askRevokeToken = (item: ApiTokenItem) => askRevoke({ kind: 'token', item });
+  const askRevokeGrant = (item: OAuthGrantItem) => askRevoke({ kind: 'grant', item });
   const others = allTokens?.filter((token) => token.user.id !== currentUserId) ?? null;
+  const otherGrants = allGrants?.filter((grant) => grant.user.id !== currentUserId) ?? null;
 
   return (
     <div className="p-6 md:p-10">
       <PageHeader
         title="Jetons d’accès"
-        description="Un jeton permet à un client MCP (Claude, Cursor, VS Code) d’agir en votre nom. Ses droits sont ses portées, dans la limite de votre rôle."
+        description="Un client MCP (Claude, Cursor, VS Code) agit en votre nom avec une connexion OAuth ou avec un jeton. Ses droits sont ses portées, dans la limite de votre rôle."
       />
+      {mcpUrl && (
+        <section
+          aria-labelledby="apps-heading"
+          className="mb-10 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5"
+        >
+          <h2 id="apps-heading" className="genga-display mb-1 text-lg font-semibold">
+            Applications connectées
+          </h2>
+          <p className="mb-4 text-sm text-[var(--muted)]">
+            Ajoutez l’adresse <span className="genga-mono break-all text-[var(--foreground)]">{mcpUrl}</span> dans votre
+            client MCP. Il ouvre une page de Genga qui demande votre accord : aucun jeton à copier.
+          </p>
+          {grants.length ? (
+            <GrantsTable label="Applications connectées" grants={grants} showOwner={false} onRevoke={askRevokeGrant} />
+          ) : (
+            <p className="text-sm text-[var(--muted)]">Aucune application connectée.</p>
+          )}
+        </section>
+      )}
       {created && <NewToken token={created} onDone={() => setCreated(null)} />}
       <section
         aria-labelledby="new-token-heading"
@@ -308,7 +394,7 @@ export function TokensPage() {
         <h2 id="my-tokens-heading" className="genga-display mb-4 text-lg font-semibold">
           Mes jetons
         </h2>
-        <TokensTable label="Mes jetons" tokens={tokens} showOwner={false} onRevoke={askRevoke} />
+        <TokensTable label="Mes jetons" tokens={tokens} showOwner={false} onRevoke={askRevokeToken} />
       </section>
 
       {others && (
@@ -319,7 +405,28 @@ export function TokensPage() {
           <p className="mb-4 text-sm text-[var(--muted)]">
             En tant qu’administrateur, vous pouvez révoquer le jeton de toute personne.
           </p>
-          <TokensTable label="Jetons des autres personnes" tokens={others} showOwner onRevoke={askRevoke} />
+          <TokensTable label="Jetons des autres personnes" tokens={others} showOwner onRevoke={askRevokeToken} />
+        </section>
+      )}
+
+      {otherGrants && mcpUrl && (
+        <section aria-labelledby="all-grants-heading" className="mt-10">
+          <h2 id="all-grants-heading" className="genga-display mb-1 text-lg font-semibold">
+            Applications des autres personnes
+          </h2>
+          <p className="mb-4 text-sm text-[var(--muted)]">
+            En tant qu’administrateur, vous pouvez déconnecter l’application de toute personne.
+          </p>
+          {otherGrants.length ? (
+            <GrantsTable
+              label="Applications des autres personnes"
+              grants={otherGrants}
+              showOwner
+              onRevoke={askRevokeGrant}
+            />
+          ) : (
+            <p className="text-sm text-[var(--muted)]">Aucune application connectée.</p>
+          )}
         </section>
       )}
 
@@ -328,17 +435,23 @@ export function TokensPage() {
           <AlertDialog.Dialog>
             <AlertDialog.Header>
               <AlertDialog.Icon status="danger" />
-              <AlertDialog.Heading>Révoquer « {confirm?.name} » ?</AlertDialog.Heading>
+              <AlertDialog.Heading>
+                {confirm?.kind === 'grant' ? 'Déconnecter' : 'Révoquer'} « {revocationName(confirm)} » ?
+              </AlertDialog.Heading>
             </AlertDialog.Header>
             <AlertDialog.Body>
-              <p>Les clients qui utilisent ce jeton perdent l’accès tout de suite. Cette action est définitive.</p>
+              <p>
+                {confirm?.kind === 'grant'
+                  ? 'L’application perd l’accès tout de suite. Pour la reconnecter, il faudra l’autoriser à nouveau.'
+                  : 'Les clients qui utilisent ce jeton perdent l’accès tout de suite. Cette action est définitive.'}
+              </p>
             </AlertDialog.Body>
             <AlertDialog.Footer>
               <Button slot="close" variant="tertiary">
                 Annuler
               </Button>
               <Button variant="danger" isPending={revoking} onPress={() => confirm && void revoke(confirm)}>
-                Révoquer
+                {confirm?.kind === 'grant' ? 'Déconnecter' : 'Révoquer'}
               </Button>
             </AlertDialog.Footer>
           </AlertDialog.Dialog>

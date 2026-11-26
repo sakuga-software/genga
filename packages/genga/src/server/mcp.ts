@@ -14,6 +14,7 @@ import type { GengaContext } from './context';
 import type { GengaDocuments } from './documents';
 import { GengaError } from './errors';
 import type { GengaMedia } from './media';
+import { hasOAuthBearer, type GengaOAuth, type OAuthOptions } from './oauth';
 import { relationOptions } from './relations';
 import { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, type RemoteFetchOptions } from './remote-fetch';
 
@@ -27,6 +28,11 @@ export type McpOptions = {
   uploadPorts?: number[];
   /** For tests: the DNS lookup and the address check of `upload_media` with a `url`. */
   remoteFetch?: Pick<RemoteFetchOptions, 'lookup' | 'isAllowedAddress' | 'timeoutMs'>;
+  /**
+   * OAuth 2.1 sign-in for MCP clients, on by default with the `mcp` option of `createGenga`.
+   * `false` keeps personal tokens only. See docs/mcp-oauth.md.
+   */
+  oauth?: false | OAuthOptions;
 };
 
 type Services = {
@@ -34,6 +40,8 @@ type Services = {
   documents: GengaDocuments;
   media: GengaMedia;
   tokens: GengaApiTokens;
+  /** The OAuth server of the endpoint. Null when the endpoint takes personal tokens only. */
+  oauth: GengaOAuth | null;
 };
 
 /** Remote downloads of `upload_media` that one token can run at the same time. */
@@ -122,6 +130,10 @@ function jsonRpcError(status: number, message: string, headers: Record<string, s
   });
 }
 
+function bearerChallenge(error?: string): string {
+  return error ? `Bearer realm="genga", error="${error}"` : 'Bearer realm="genga"';
+}
+
 function decodeBase64(value: string, maxBytes: number): Buffer {
   const text = value.replace(/^data:[^,]*;base64,/, '').replace(/\s+/g, '');
   if (!/^[A-Za-z0-9+/_-]*={0,2}$/.test(text) || !text.length) {
@@ -135,10 +147,11 @@ function decodeBase64(value: string, maxBytes: number): Buffer {
 
 /**
  * The MCP server: one stateless server per request, over Streamable HTTP with JSON responses.
- * Every request needs `Authorization: Bearer gga_…`. Every write runs the admin services,
- * with `via: mcp` and the token id in the audit log.
+ * Every request needs `Authorization: Bearer` with a personal token (`gga_…`) or an OAuth access
+ * token (`ggo_…`). Every write runs the admin services, with `via: mcp` and the token id or the
+ * grant id in the audit log.
  */
-export function createMcp({ ctx, documents, media, tokens }: Services, options: McpOptions = {}) {
+export function createMcp({ ctx, documents, media, tokens, oauth }: Services, options: McpOptions = {}) {
   const maxBodyBytes = Math.max(JSON_BYTES, Math.ceil(ctx.maxUploadBytes / 3) * 4 + UPLOAD_OVERHEAD_BYTES);
 
   const uploadPorts = options.uploadPorts ?? DEFAULT_ALLOWED_PORTS;
@@ -192,12 +205,16 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
     const has = (scope: ApiScope) => token.scopes.includes(scope);
 
     function missingScope(scope: ApiScope): CallToolResult {
+      const fix =
+        token.kind === 'oauth'
+          ? `Ask the human to connect this client again and allow the "${scope}" scope.`
+          : `Create a token with the "${scope}" scope in the admin (Jetons d'accès).`;
       return {
         isError: true,
         content: [
           {
             type: 'text',
-            text: `This token has no "${scope}" scope. Its scopes: ${token.scopes.join(', ')}. Create a token with the "${scope}" scope in the admin (Jetons d'accès).`,
+            text: `This token has no "${scope}" scope. Its scopes: ${token.scopes.join(', ')}. ${fix}`,
           },
         ],
       };
@@ -724,7 +741,7 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
     if (!originAllowed(request)) return jsonRpcError(403, 'Origin not allowed.');
     let auth: TokenAuth | null;
     try {
-      auth = await tokens.authenticate(request);
+      auth = oauth && hasOAuthBearer(request) ? await oauth.authenticate(request) : await tokens.authenticate(request);
     } catch (error) {
       if (error instanceof GengaError && error.status === 429) {
         return jsonRpcError(429, error.message, { 'Retry-After': '900' });
@@ -734,14 +751,16 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
     }
     if (!auth) {
       const presented = request.headers.has('authorization');
+      const error = presented ? 'invalid_token' : undefined;
+      const howTo = oauth
+        ? 'Connect with OAuth, or create a token in the admin (Jetons d’accès).'
+        : 'Create a token in the admin (Jetons d’accès).';
       return jsonRpcError(
         401,
         presented
           ? 'The token is not valid: unknown, revoked, expired, or of a disabled user.'
-          : 'Send Authorization: Bearer <token>. Create a token in the admin (Jetons d’accès).',
-        {
-          'WWW-Authenticate': presented ? 'Bearer realm="genga", error="invalid_token"' : 'Bearer realm="genga"',
-        },
+          : `Send Authorization: Bearer <token>. ${howTo}`,
+        { 'WWW-Authenticate': oauth ? oauth.challenge(error) : bearerChallenge(error) },
       );
     }
     if (request.method !== 'POST') {
@@ -764,9 +783,11 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
     });
     try {
       await server.connect(transport);
-      const response = await withAuditSource({ via: 'mcp', tokenId: auth.token.id }, () =>
-        transport.handleRequest(request, { parsedBody }),
-      );
+      const source =
+        auth.token.kind === 'oauth'
+          ? { via: 'mcp', grantId: auth.token.id, clientId: auth.token.clientId }
+          : { via: 'mcp', tokenId: auth.token.id };
+      const response = await withAuditSource(source, () => transport.handleRequest(request, { parsedBody }));
       const headers = new Headers(response.headers);
       headers.set('Cache-Control', 'no-store');
       headers.set('X-Content-Type-Options', 'nosniff');

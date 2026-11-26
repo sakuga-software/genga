@@ -16,6 +16,7 @@ import {
 } from './events';
 import { createScheduler, type SchedulerOptions } from './schedules';
 import { createMcp, type McpOptions } from './mcp';
+import { createOAuth } from './oauth';
 import { createMedia } from './media';
 import { runMigrations } from '../../migrations/migrate.mjs';
 import { originOf } from './origin';
@@ -187,7 +188,11 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   const users = createUsers(ctx, auth);
   const published = createPublished(ctx, auth);
   const tokens = createApiTokens(ctx);
-  const services = { ctx, auth, documents, media, users, tokens };
+  const oauth =
+    mcpPath && mcpOptions && mcpOptions.oauth !== false
+      ? createOAuth({ ctx, tokens }, mcpPath, mcpOptions.oauth ?? {})
+      : null;
+  const services = { ctx, auth, documents, media, users, tokens, oauth };
   const reads = createPublicReads({ ctx, published });
   const source = createEmbeddedSource({ ctx, auth, published, reads });
   const api = createApi(services);
@@ -226,6 +231,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     media: media.serve,
     publicApi: publicApiOptions ? createPublicApi({ ctx, published, media }, reads, publicApiOptions) : null,
     mcp: mcpPath ? { path: mcpPath, handle: mcp } : null,
+    oauth,
   });
 
   return {
@@ -247,6 +253,8 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     users,
     published,
     tokens,
+    /** The OAuth server of the MCP endpoint. Null when the `mcp` option is off or sets `oauth: false`. */
+    oauth,
     /** Base path of the media files, for example `/media`. */
     mediaPath: ctx.mediaPath,
     admin: createAdmin(services),
@@ -323,6 +331,7 @@ export { ADMIN_HEADERS } from './api';
 export { API_TOKEN_PREFIX, type TokenAuth } from './api-tokens';
 export { withAuditSource, type AuditSource } from './auth';
 export type { McpOptions } from './mcp';
+export { OAUTH_ACCESS_PREFIX, OAUTH_REFRESH_PREFIX, type OAuthOptions } from './oauth';
 export type { SchedulerOptions } from './schedules';
 export { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, isPublicAddress, type RemoteFetchOptions } from './remote-fetch';
 export { MEDIA_KEY_PATTERN, ALLOWED_MIME } from './media';

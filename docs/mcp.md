@@ -51,9 +51,36 @@ Any other framework that speaks `Request` and `Response` (Hono, Next.js route ha
 Remix, Bun, Deno) can call `genga.handle` the same way. The option `mcp.allowedOrigins` of `createGenga`
 sets the browser origins that can call it (see [Security](#security-model)).
 
+## Connect with OAuth
+
+With the `mcp` option (on in the headless server), a client connects with the URL of the
+endpoint only. It opens a Genga page in your browser:
+
+1. If you are not signed in to the admin, sign in.
+2. The page shows the name of the client, where it comes from, and where your browser goes back
+   to. A client that runs on your computer gets a warning: continue only if you started the
+   connection yourself.
+3. Keep or remove the rights that the client asks for, then select **Autoriser**.
+
+The client gets an access token for 1 hour and a refresh token, and renews them by itself. The
+rights are the same as for a personal token: the rights that you keep **and** your role, both.
+**Réglages › Jetons d’accès › Applications connectées** lists the clients that you approved;
+**Déconnecter** stops a client at once. Disabling a user disconnects its clients too.
+
+| Client      | How to connect                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------- |
+| Claude Code | `claude mcp add --transport http genga https://cms.example.com/mcp`, then `/mcp`.            |
+| claude.ai   | **Settings › Connectors › Add custom connector**, with the URL.                              |
+| Cursor      | `{ "mcpServers": { "genga": { "url": "https://cms.example.com/mcp" } } }`, then **Connect**. |
+| VS Code     | `{ "servers": { "genga": { "type": "http", "url": "https://cms.example.com/mcp" } } }`.      |
+
+A client without OAuth uses a personal token (below). The [design note](./mcp-oauth.md) gives
+the endpoints, the client registration and the token rules. `mcp.oauth: false` (or
+`GENGA_MCP_OAUTH=off` on the headless server) turns OAuth off.
+
 ## Create a token
 
-MCP clients cannot use the admin cookie. They send a personal access token in a header:
+A client can also send a personal access token in a header:
 
 ```http
 Authorization: Bearer gga_…
@@ -215,9 +242,11 @@ publish only when a human asks.
 
 ## Security model
 
-- **Authentication.** Every request needs `Authorization: Bearer gga_…`. Without it, or with a
-  token that is unknown, revoked, expired or of a disabled user, the answer is `401` with a
-  `WWW-Authenticate: Bearer` header. The endpoint never reads the session cookie.
+- **Authentication.** Every request needs `Authorization: Bearer` with a personal token
+  (`gga_…`) or an OAuth access token (`ggo_…`). Without it, or with a token that is unknown,
+  revoked, expired or of a disabled user, the answer is `401` with a `WWW-Authenticate: Bearer`
+  header. With OAuth on, the header gives `resource_metadata` and `scope`. An OAuth access token
+  works only on this endpoint (audience check). The endpoint never reads the session cookie.
 - **Rights.** Scopes ∩ role, checked on each request with the current role (see
   [Create a token](#create-a-token)). Tokens cannot create or revoke tokens: only a signed-in session of
   the admin can, through the admin API.
@@ -266,7 +295,6 @@ Advice:
 
 ## Limits
 
-- No OAuth: the client sends a token that you create in the admin.
 - Stateless: no server-to-client notifications, no resumable streams. `GET` and `DELETE`
   answer `405`.
 - `list_documents` searches the title and the slug only, and filters `tag` on the draft.

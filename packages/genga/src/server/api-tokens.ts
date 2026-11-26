@@ -18,10 +18,15 @@ const FAILURE_WINDOW_MS = 15 * 60_000;
 /** Bad tokens from one address in 15 minutes before a 429. */
 const FAILURES_PER_ADDRESS = 20;
 
-/** The result of a valid bearer token: the user as it is now, and the token. */
+/**
+ * The result of a valid bearer token: the user as it is now, and the token. For an OAuth access
+ * token, `id` is the grant and `name` is the name of the client.
+ */
 export type TokenAuth = {
   user: PublicUser;
-  token: { id: string; name: string; scopes: ApiScope[] };
+  token:
+    | { kind: 'personal'; id: string; name: string; scopes: ApiScope[] }
+    | { kind: 'oauth'; id: string; name: string; scopes: ApiScope[]; clientId: string };
 };
 
 type TokenRow = {
@@ -69,7 +74,7 @@ function checkExpiry(value: unknown): Date | null {
   return date;
 }
 
-function bearerToken(request: Request): string | null {
+export function bearerToken(request: Request): string | null {
   const header = request.headers.get('authorization');
   if (!header) return null;
   const match = /^Bearer[ \t]+(\S+)[ \t]*$/i.exec(header);
@@ -147,21 +152,27 @@ export function createApiTokens(ctx: GengaContext) {
    * is not valid: unknown, revoked, expired, or of a disabled user. Throws a 429 after too many
    * bad tokens from one address.
    */
+  /**
+   * Counts a bad token of the request, and returns null. Throws a 429 after too many bad tokens
+   * from one address. A valid token always passes: the limit applies to bad tokens only, so that
+   * bad tokens from a shared address (a NAT, a proxy, an unknown address) cannot lock out other clients.
+   */
+  function refuse(request: Request): null {
+    if (bearerToken(request) === null) return null;
+    const ip = clientAddress(request, ctx.trustedProxies);
+    if (ip === 'unknown') return null;
+    const limited = failures.isLimited(ip);
+    failures.hit(ip);
+    if (limited) {
+      throw new GengaError(429, 'rate_limited', 'Too many invalid tokens. Wait 15 minutes, then try again.');
+    }
+    return null;
+  }
+
   async function authenticate(request: Request): Promise<TokenAuth | null> {
     const token = bearerToken(request);
     if (token === null) return null;
-    // A valid token always passes: the limit applies to bad tokens only, so that bad tokens
-    // from a shared address (a NAT, a proxy, an unknown address) cannot lock out other clients.
-    const ip = clientAddress(request, ctx.trustedProxies);
-    const refuse = () => {
-      const limited = ip !== 'unknown' && failures.isLimited(ip);
-      if (ip !== 'unknown') failures.hit(ip);
-      if (limited) {
-        throw new GengaError(429, 'rate_limited', 'Too many invalid tokens. Wait 15 minutes, then try again.');
-      }
-      return null;
-    };
-    if (!TOKEN_PATTERN.test(token)) return refuse();
+    if (!TOKEN_PATTERN.test(token)) return refuse(request);
     const [row] = await sql<(TokenRow & { role: string; user_created_at: Date; disabled_at: Date | null })[]>`
       SELECT t.id, t.name, t.scopes, t.last_used_at, t.user_id,
         u.email, u.name AS user_name, u.role, u.created_at AS user_created_at, u.disabled_at
@@ -169,7 +180,7 @@ export function createApiTokens(ctx: GengaContext) {
       WHERE t.token_hash = ${hashToken(token)} AND t.revoked_at IS NULL
         AND (t.expires_at IS NULL OR t.expires_at > now()) AND u.disabled_at IS NULL
     `;
-    if (!row) return refuse();
+    if (!row) return refuse(request);
     if (!row.last_used_at || Date.now() - row.last_used_at.getTime() > LAST_USED_PRECISION_MS) {
       await sql`UPDATE genga_api_tokens SET last_used_at = now() WHERE id = ${row.id}`;
     }
@@ -182,7 +193,7 @@ export function createApiTokens(ctx: GengaContext) {
         created_at: row.user_created_at,
         disabled_at: row.disabled_at,
       }),
-      token: { id: row.id, name: row.name, scopes: row.scopes.filter(isApiScope) },
+      token: { kind: 'personal', id: row.id, name: row.name, scopes: row.scopes.filter(isApiScope) },
     };
   }
 
@@ -190,7 +201,7 @@ export function createApiTokens(ctx: GengaContext) {
     failures.clear();
   }
 
-  return { create, list, revoke, authenticate, resetRateLimits };
+  return { create, list, revoke, authenticate, refuse, resetRateLimits };
 }
 
 export type GengaApiTokens = ReturnType<typeof createApiTokens>;
