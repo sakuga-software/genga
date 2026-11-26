@@ -38,7 +38,9 @@ async function boot(): Promise<GengaServer> {
     secureCookies: settings.publicUrl.startsWith('https:'),
     trustedProxies,
     publicApi: { corsOrigins: settings.corsOrigins, rateLimit: settings.rateLimit },
-    mcp: settings.mcp.enabled ? { path: settings.mcp.path } : false,
+    mcp: settings.mcp.enabled
+      ? { path: settings.mcp.path, ...(settings.mcp.uploadPorts && { uploadPorts: settings.mcp.uploadPorts }) }
+      : false,
   });
   genga.ready().catch((error) => console.error('[genga] Start failed:', error));
   return { settings, genga };

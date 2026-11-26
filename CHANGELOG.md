@@ -41,6 +41,9 @@ All notable changes to the `genga` package. The format follows
 
 ### Changed
 
+- MCP `upload_media` with a `url` downloads only from ports 80 and 443, for the URL and each
+  redirect. The `uploadPorts` option of `mcp` (`GENGA_MCP_UPLOAD_PORTS` on the server image)
+  changes the list.
 - Preview responses (`PREVIEW_HEADERS`, `loadForRoute`) also send `Referrer-Policy: no-referrer`
   and `X-Robots-Tag: noindex`.
 

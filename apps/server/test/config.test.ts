@@ -142,18 +142,26 @@ describe('settings', () => {
       rateLimit: 300,
       secret: null,
       siteUrl: null,
-      mcp: { enabled: true, path: '/mcp' },
+      mcp: { enabled: true, path: '/mcp', uploadPorts: null },
     });
   });
 
   it('reads the MCP switch and path', () => {
-    expect(readSettings({ ...env, GENGA_MCP: 'off' }).mcp).toEqual({ enabled: false, path: '/mcp' });
-    expect(readSettings({ ...env, GENGA_MCP_PATH: '/agents/' }).mcp).toEqual({ enabled: true, path: '/agents' });
+    expect(readSettings({ ...env, GENGA_MCP: 'off' }).mcp).toEqual({ enabled: false, path: '/mcp', uploadPorts: null });
+    expect(readSettings({ ...env, GENGA_MCP_PATH: '/agents/' }).mcp).toEqual({
+      enabled: true,
+      path: '/agents',
+      uploadPorts: null,
+    });
+    expect(readSettings({ ...env, GENGA_MCP_UPLOAD_PORTS: '443, 8443' }).mcp.uploadPorts).toEqual([443, 8443]);
     for (const [values, problem] of [
       [{ GENGA_MCP: 'maybe' }, 'GENGA_MCP must be on or off'],
       [{ GENGA_MCP_PATH: '/a/b' }, 'GENGA_MCP_PATH must be one path segment'],
       [{ GENGA_MCP_PATH: '/api' }, 'GENGA_MCP_PATH cannot be /api'],
       [{ GENGA_MCP_PATH: '/admin' }, 'GENGA_MCP_PATH cannot be the admin path'],
+      [{ GENGA_MCP_UPLOAD_PORTS: '443,http' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
+      [{ GENGA_MCP_UPLOAD_PORTS: '0' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
+      [{ GENGA_MCP_UPLOAD_PORTS: '70000' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
     ] as const) {
       expect(() => readSettings({ ...env, ...values })).toThrow(problem);
     }

@@ -14,7 +14,12 @@ export type RemoteFetchOptions = {
   lookup?: LookupAll;
   /** Default: `isPublicAddress`. */
   isAllowedAddress?: (address: string) => boolean;
+  /** Ports that the URL and each redirect can use. Default: `DEFAULT_ALLOWED_PORTS`. */
+  allowedPorts?: readonly number[];
 };
+
+/** A public host can run other services on other ports, so only the web ports pass by default. */
+export const DEFAULT_ALLOWED_PORTS: readonly number[] = [80, 443];
 
 export type RemoteFile = { body: Buffer; filename: string; contentType: string | null; url: string };
 
@@ -79,6 +84,19 @@ function blocked(host: string) {
   );
 }
 
+function portBlocked(port: number, allowedPorts: readonly number[]) {
+  return new GengaError(
+    400,
+    'url_blocked',
+    `The port ${port} is not allowed. Use a URL on port ${allowedPorts.join(' or ')}.`,
+  );
+}
+
+function portOf(url: URL): number {
+  if (url.port) return Number(url.port);
+  return url.protocol === 'https:' ? 443 : 80;
+}
+
 function failed(message: string) {
   return new GengaError(400, 'fetch_failed', message);
 }
@@ -101,6 +119,7 @@ function filenameOf(url: URL): string {
 /**
  * Downloads a file for the media library, with SSRF protection:
  * - only `http:` and `https:` URLs without credentials;
+ * - the port must be in `allowedPorts`;
  * - every address of the host must be public, and the socket connects to a checked address;
  * - each redirect is checked again, up to `maxRedirects`;
  * - the body stops at `maxBytes`, and the whole download at `timeoutMs`.
@@ -108,6 +127,7 @@ function filenameOf(url: URL): string {
 export async function fetchRemoteFile(input: string, options: RemoteFetchOptions): Promise<RemoteFile> {
   const lookupAll = options.lookup ?? systemLookup;
   const allowed = options.isAllowedAddress ?? isPublicAddress;
+  const allowedPorts = options.allowedPorts ?? DEFAULT_ALLOWED_PORTS;
   const maxRedirects = options.maxRedirects ?? 3;
   const deadline = Date.now() + (options.timeoutMs ?? 15_000);
 
@@ -137,6 +157,7 @@ export async function fetchRemoteFile(input: string, options: RemoteFetchOptions
   for (let redirects = 0; ; redirects += 1) {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') throw failed('Only http and https URLs are allowed.');
     if (url.username || url.password) throw failed('The URL must not contain credentials.');
+    if (!allowedPorts.includes(portOf(url))) throw portBlocked(portOf(url), allowedPorts);
     const host = url.hostname.replace(/^\[|\]$/g, '');
     if (isIP(host) && !allowed(host)) throw blocked(host);
     const remaining = deadline - Date.now();

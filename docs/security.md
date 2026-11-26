@@ -76,7 +76,7 @@ Personal access tokens (`gga_…`) authenticate the [MCP endpoint](./mcp.md). Th
 stores their SHA-256 only. Their rights are their scopes and the role of their user, both.
 Disabling a user revokes its tokens. Only a signed-in session of the admin can create or revoke a token, never a token.
 Writes through MCP add `via: "mcp"` and the token id to the audit entry. `upload_media`
-downloads a URL only from public addresses, and checks each redirect again. See
+downloads a URL only from public addresses on ports 80 and 443, and checks each redirect again. See
 [the security model of the MCP server](./mcp.md#security-model).
 
 ## Public API

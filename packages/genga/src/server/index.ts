@@ -310,5 +310,5 @@ export { ADMIN_HEADERS } from './api';
 export { API_TOKEN_PREFIX, type TokenAuth } from './api-tokens';
 export { withAuditSource, type AuditSource } from './auth';
 export type { McpOptions } from './mcp';
-export { fetchRemoteFile, isPublicAddress, type RemoteFetchOptions } from './remote-fetch';
+export { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, isPublicAddress, type RemoteFetchOptions } from './remote-fetch';
 export { MEDIA_KEY_PATTERN, ALLOWED_MIME } from './media';
