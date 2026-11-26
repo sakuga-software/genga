@@ -64,7 +64,7 @@ function ports(value: string | undefined, name: string, problems: string[]): num
     .map((part) => part.trim())
     .filter(Boolean);
   const parsed = parts.map(Number);
-  if (!parts.length || parsed.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) {
+  if (!parts.length || parts.some((part, index) => !/^\d+$/.test(part) || parsed[index] < 1 || parsed[index] > 65535)) {
     problems.push(`${name} must be a comma-separated list of ports from 1 to 65535, not "${value}".`);
     return null;
   }

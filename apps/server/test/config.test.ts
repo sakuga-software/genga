@@ -160,6 +160,8 @@ describe('settings', () => {
       [{ GENGA_MCP_PATH: '/api' }, 'GENGA_MCP_PATH cannot be /api'],
       [{ GENGA_MCP_PATH: '/admin' }, 'GENGA_MCP_PATH cannot be the admin path'],
       [{ GENGA_MCP_UPLOAD_PORTS: '443,http' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
+      [{ GENGA_MCP_UPLOAD_PORTS: '0x1BB' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
+      [{ GENGA_MCP_UPLOAD_PORTS: '1e2' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
       [{ GENGA_MCP_UPLOAD_PORTS: '0' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
       [{ GENGA_MCP_UPLOAD_PORTS: '70000' }, 'GENGA_MCP_UPLOAD_PORTS must be a comma-separated list'],
     ] as const) {
