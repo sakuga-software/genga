@@ -187,6 +187,27 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the MCP endpoint. A request without `Origin` passes.                    |
 | `webhooks`            | `GENGA_WEBHOOKS`                  | `[{ url, secret, events? }]`: receivers of the signed [publish webhooks](./events.md).                |
 | `webhookDelivery`     | `{}`                              | `{ fetch, pollMs, timeoutMs }` of the webhook sender.                                                 |
+| `scheduler`           | `{ intervalMs: 30000 }`           | The runner of [scheduled publish](#scheduled-publish). `false` turns its timer off.                   |
+
+## Scheduled publish
+
+In the editor, « Programmer » sets a date to publish a document and a date to unpublish it.
+`PUT <adminPath>/api/documents/:id/schedule` takes `{ publishAt, unpublishAt }` (ISO dates, `null`
+clears one, an absent key stays as it is). It needs the right to publish.
+
+- At the date, Genga publishes the draft of that moment, as the user who saved the schedule. The
+  action is a normal publish or unpublish: the same [events](./events.md), webhooks, cache
+  invalidation and audit entry, with `detail.scheduled: true`.
+- A manual publish clears the scheduled publish. A manual unpublish clears the scheduled
+  unpublish. A delete clears both.
+- If the action is refused (the user lost the right or the account, a field is invalid, the slug
+  is taken), the schedule stops, the editor shows the reason, and the audit log gets
+  `document.schedule_failed`. Save a new date to try again.
+- Each process runs the due actions every `scheduler.intervalMs` (30 seconds), so an action runs
+  up to that long after its date. With several replicas, one runs them at a time, under a Postgres
+  advisory lock, and each action runs once.
+- On a platform without a long-lived process, set `scheduler: false` and call
+  `genga.runSchedules()` from a cron job.
 
 ## S3 storage
 

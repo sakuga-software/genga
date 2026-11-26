@@ -30,6 +30,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   change to a target clears the cache and carries the tags of the collections that point to it.
   The MCP tools describe the value format. The `ETag` of a published document now includes a hash
   of its data.
+- Scheduled publish and unpublish: « Programmer » in the editor, `PUT <adminPath>/api/documents/:id/schedule`,
+  the `scheduler` option and `genga.runSchedules()`. One process runs the due actions at a
+  time, with the normal events, webhooks and audit entries. Migration `0005_schedules`. See
+  `docs/configuration.md#scheduled-publish`.
 - `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
   public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
   answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer
