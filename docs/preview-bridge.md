@@ -197,7 +197,9 @@ connectPreview({ adminOrigin, onDraft, head });
 
 - A `meta` key is the `name` of the tag (`description`), or its `property` for a key that starts
   with `og:`. The bridge changes the tag that has this `name` or `property`, or adds one.
-- A `null` or empty value removes the tag. An `undefined` value and the keys that `head` does not
+- A `null` or empty value empties the tag, or removes it if the bridge added it. The bridge
+  changes the text and the attributes of the tags that the framework renders, and never removes
+  them, so the framework can render the head again. An `undefined` value and the keys that `head` does not
   give stay as they are.
 - `head` runs in the preview frame only. Use the same function in the `meta` of the route, so the
   preview and the page that loads show the same values.

@@ -4,6 +4,7 @@ import { connectBridge, connectPreview, isTrustedMessage, previewToken, readPrev
 type FakeMeta = {
   attributes: Map<string, string>;
   setAttribute: (name: string, value: string) => void;
+  hasAttribute: (name: string) => boolean;
   remove: () => void;
 };
 
@@ -60,6 +61,7 @@ function fakeFrame(url: string) {
     const tag: FakeMeta = {
       attributes: new Map(),
       setAttribute: (name, value) => tag.attributes.set(name, value),
+      hasAttribute: (name) => tag.attributes.has(name),
       remove: () => metas.splice(metas.indexOf(tag), 1),
     };
     return tag;
@@ -73,6 +75,7 @@ function fakeFrame(url: string) {
         if (node.attributes) metas.push(node);
       },
       querySelector: (selector: string) => {
+        if (selector === 'title') return null;
         const key = /\[name="([^"]+)"\]/.exec(selector)?.[1];
         return (
           metas.find((tag) => tag.attributes.get('name') === key || tag.attributes.get('property') === key) ?? null
@@ -143,6 +146,25 @@ describe('connectBridge', () => {
     frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { title: 'Second', excerpt: '' } });
     expect(frame.doc.title).toBe('Second | Site');
     expect(frame.metas()).toEqual({ 'og:title': 'Second' });
+  });
+
+  it('empties a meta tag of the framework and keeps it', () => {
+    const frame = fakeFrame('https://site.example/blog/a');
+    const owned = frame.doc.createElement('meta') as FakeMeta;
+    owned.setAttribute('name', 'description');
+    owned.setAttribute('content', 'Loaded');
+    frame.doc.head.append(owned);
+    connectBridge({
+      documentId: DOC,
+      adminOrigin: ADMIN,
+      onDraft: () => {},
+      head: (data) => ({ meta: { description: data.excerpt as string } }),
+    });
+
+    frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { excerpt: 'Live' } });
+    expect(frame.metas()).toEqual({ description: 'Live' });
+    frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { excerpt: '' } });
+    expect(frame.metas()).toEqual({ description: '' });
   });
 
   it('refuses an admin origin that is not an origin', () => {

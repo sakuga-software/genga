@@ -45,32 +45,44 @@ const PREVIEW_CSS = `
 
 /**
  * The head of a preview page. `meta` keys are `name` values (`description`) or `property`
- * values (`og:title`). A `null` or empty value removes the tag.
+ * values (`og:title`). A `null` or empty value empties the tag.
  */
 export type PreviewHead = {
   title?: string | null;
   meta?: Record<string, string | null | undefined>;
 };
 
+const OWN_TAG = 'data-genga-head';
+
 function metaTag(key: string): Element | null {
   const value = CSS.escape(key);
   return document.head.querySelector(`meta[name="${value}"], meta[property="${value}"]`);
 }
 
-/** Writes the title and the meta tags of a preview page. Keys that `head` does not give stay as they are. */
+/**
+ * Writes the title and the meta tags of a preview page. Keys that `head` does not give stay as they are.
+ * A framework can own the `<title>` element and the tags. This function changes only their text and
+ * their attributes. It removes only the tags that it added.
+ */
 export function applyHead(head: PreviewHead) {
   if (typeof document === 'undefined') return;
-  if (typeof head.title === 'string') document.title = head.title;
+  if (typeof head.title === 'string') {
+    const text = document.head.querySelector('title')?.firstChild;
+    if (text?.nodeName === '#text') text.nodeValue = head.title;
+    else document.title = head.title;
+  }
   for (const [key, content] of Object.entries(head.meta ?? {})) {
     if (content === undefined) continue;
     let tag = metaTag(key);
     if (content === null || content === '') {
-      tag?.remove();
+      if (tag?.hasAttribute(OWN_TAG)) tag.remove();
+      else tag?.setAttribute('content', '');
       continue;
     }
     if (!tag) {
       tag = document.createElement('meta');
       tag.setAttribute(key.startsWith('og:') ? 'property' : 'name', key);
+      tag.setAttribute(OWN_TAG, '');
       document.head.append(tag);
     }
     tag.setAttribute('content', content);
