@@ -29,7 +29,8 @@ pnpm test:pack   # packs genga, installs the tarball in a copy of the example, b
 
 The tests create and empty the `genga_test` and `genga_server_test` databases. To use another server, set
 `GENGA_TEST_ADMIN_URL` (a database that can create databases) and `GENGA_TEST_DATABASE_URL`.
-`pnpm test:pack` also runs the migrations if `DATABASE_URL` is set.
+`pnpm test:pack` also runs the migrations if `DATABASE_URL` is set. It uses the React Router 8 of the
+example. `pnpm test:pack --react-router=7` installs React Router 7 and TypeScript 6 in the copy. CI runs both.
 
 ## The headless server
 
