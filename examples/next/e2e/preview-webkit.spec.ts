@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 // WebKit blocks the cookies of a frame on another site, except `Partitioned` cookies. The admin
 // is on `localhost` and the site on `127.0.0.1`: this test fails if Draft Mode loses its cookie.
 const GENGA = process.env.E2E_GENGA_URL ?? 'http://localhost:3910';
-const SITE = process.env.E2E_SITE_URL ?? 'http://127.0.0.1:3911';
+const SITE = process.env.E2E_SITE_URL ?? 'https://127.0.0.1:3912';
 const PASSWORD = 'a-long-e2e-password';
 
 test('the preview works in WebKit, in a frame on another site', async ({ page }) => {

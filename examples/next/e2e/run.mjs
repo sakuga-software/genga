@@ -3,11 +3,15 @@
 // It empties the database, migrates it, starts the built server image app (apps/server) and
 // the built example, and gives the tests a one-time setup link for the first admin.
 // The admin is on `localhost` and the site on `127.0.0.1`: two sites, as a CMS on another domain.
+// The site is behind a local HTTPS proxy with a certificate of the run: WebKit on Linux keeps no
+// `Secure` cookie on plain HTTP, and the preview cookies are `Secure` in production.
 //
 // Usage: pnpm build && E2E_DATABASE_URL=postgres://…/genga_e2e node examples/next/e2e/run.mjs
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,11 +28,61 @@ if (!databaseUrl) {
 
 const gengaPort = Number(process.env.E2E_GENGA_PORT ?? 3910);
 const sitePort = Number(process.env.E2E_SITE_PORT ?? 3911);
+const httpsPort = Number(process.env.E2E_SITE_HTTPS_PORT ?? 3912);
 const gengaUrl = `http://localhost:${gengaPort}`;
-const siteUrl = `http://127.0.0.1:${sitePort}`;
+/** The site for the browser and the Genga server. */
+const siteUrl = `https://127.0.0.1:${httpsPort}`;
+/** The site without the proxy, for the webhook. */
+const siteDirect = `http://127.0.0.1:${sitePort}`;
 const webhookSecret = `whsec_${randomBytes(32).toString('base64')}`;
 const mediaDir = mkdtempSync(path.join(tmpdir(), 'genga-next-e2e-'));
 const children = [];
+
+/** An HTTPS proxy in front of the site, with a certificate for 127.0.0.1 that lives one run. */
+function startHttpsProxy(dir) {
+  const key = path.join(dir, 'key.pem');
+  const cert = path.join(dir, 'cert.pem');
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      key,
+      '-out',
+      cert,
+      '-days',
+      '1',
+      '-subj',
+      '/CN=127.0.0.1',
+      '-addext',
+      'subjectAltName=IP:127.0.0.1',
+    ],
+    { stdio: 'ignore' },
+  );
+  const server = https.createServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
+    const upstream = http.request(
+      {
+        host: '127.0.0.1',
+        port: sitePort,
+        path: req.url,
+        method: req.method,
+        headers: { ...req.headers, 'x-forwarded-proto': 'https' },
+      },
+      (answer) => {
+        res.writeHead(answer.statusCode ?? 502, answer.headers);
+        answer.pipe(res);
+      },
+    );
+    upstream.on('error', () => res.writeHead(502).end());
+    req.pipe(upstream);
+  });
+  server.listen(httpsPort, '127.0.0.1');
+  return server;
+}
 
 async function resetDatabase() {
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
@@ -101,6 +155,7 @@ async function inviteAdmin() {
 }
 
 let status = 1;
+let proxy;
 try {
   await resetDatabase();
   start('genga', 'node', [path.join(root, 'apps/server/server.mjs')], path.join(root, 'apps/server'), {
@@ -113,7 +168,7 @@ try {
     GENGA_PREVIEW_ORIGINS: siteUrl,
     GENGA_CORS_ORIGINS: siteUrl,
     GENGA_SECRET: randomBytes(48).toString('base64'),
-    GENGA_WEBHOOKS: JSON.stringify([{ url: `${siteUrl}/api/genga/webhook`, secret: webhookSecret }]),
+    GENGA_WEBHOOKS: JSON.stringify([{ url: `${siteDirect}/api/genga/webhook`, secret: webhookSecret }]),
     GENGA_MEDIA_DIR: mediaDir,
     GENGA_TRUSTED_PROXIES: '0',
     GENGA_MCP: 'off',
@@ -124,7 +179,8 @@ try {
     GENGA_SITE_URL: siteUrl,
     GENGA_WEBHOOK_SECRET: webhookSecret,
   });
-  await Promise.all([waitFor(`${gengaUrl}/readyz`), waitFor(`${siteUrl}/`)]);
+  proxy = startHttpsProxy(mediaDir);
+  await Promise.all([waitFor(`${gengaUrl}/readyz`), waitFor(`${siteDirect}/`)]);
   const setupUrl = await inviteAdmin();
   const args = ['exec', 'playwright', 'test', ...process.argv.slice(2)];
   const playwright = spawn('pnpm', args, {
@@ -142,6 +198,7 @@ try {
 } catch (error) {
   console.error(error);
 } finally {
+  proxy?.close();
   for (const child of children) {
     try {
       process.kill(-child.pid, 'SIGTERM');

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test';
 
 const GENGA = process.env.E2E_GENGA_URL ?? 'http://localhost:3910';
-const SITE = process.env.E2E_SITE_URL ?? 'http://127.0.0.1:3911';
+const SITE = process.env.E2E_SITE_URL ?? 'https://127.0.0.1:3912';
 const SETUP_URL = process.env.E2E_SETUP_URL ?? '';
 const PASSWORD = 'a-long-e2e-password';
 

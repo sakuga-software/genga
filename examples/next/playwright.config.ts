@@ -11,6 +11,8 @@ export default defineConfig({
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: process.env.E2E_SITE_URL,
+    // The site uses a self-signed certificate of the run (e2e/run.mjs).
+    ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
   },
