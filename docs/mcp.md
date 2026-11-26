@@ -60,7 +60,8 @@ endpoint only. It opens a Genga page in your browser:
 2. The page shows the name of the client, where it comes from, and where your browser goes back
    to. A client that runs on your computer gets a warning: continue only if you started the
    connection yourself.
-3. Keep or remove the rights that the client asks for, then select **Autoriser**.
+3. Check the rights. The rights that the client asks for are checked; you can remove one, or add
+   **Publication**. Then select **Autoriser**.
 
 The client gets an access token for 1 hour and a refresh token, and renews them by itself. The
 rights are the same as for a personal token: the rights that you keep **and** your role, both.

@@ -80,8 +80,10 @@ answer. It never trusts its own form: the form posts the original query string b
    automatically », the host of `client_uri`, the scheme and host of the redirect URI, and a
    warning when the redirect URI is on the computer (loopback or private-use scheme). It does
    not load `logo_uri`.
-5. The scopes of the request are checked by default. The person can remove scopes, but not add
-   any. Without a `scope` parameter, the request asks `read write`.
+5. The page lists the three scopes and checks the scopes of the request. Without a `scope`
+   parameter, the request asks `read write`. The person can remove a scope or add `publish`.
+   The protected resource metadata gives `read write` as `scopes_supported`: the minimal set,
+   as the specification asks, so a client does not ask for `publish` by default.
 6. The form posts with a full page load (`reloadDocument`), so the browser follows the `302` to
    the client, also to a private-use scheme. The post passes the origin check of the admin. The
    page cannot be in a frame (`frame-ancestors 'none'`).

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Button, Checkbox, CheckboxGroup, Description, Label } from '@heroui/react';
 import { Form, useActionData, useLoaderData, useNavigation } from 'react-router';
-import type { ApiScope } from '../../access';
+import { API_SCOPES } from '../../access';
 import { setAdminPath } from '../../client/admin-path';
 import type { OAuthConsentPageData } from '../../types';
 import { AuthLayout } from './auth-layout';
@@ -84,9 +84,11 @@ export function OAuthConsentPage() {
 
         <CheckboxGroup value={scopes} onChange={setScopes} name="scope">
           <Label>Droits accordés</Label>
-          <Description>Les droits restent dans la limite de votre rôle.</Description>
+          <Description>
+            Les droits demandés par l’application sont cochés. Ils restent dans la limite de votre rôle.
+          </Description>
           <div className="mt-2 flex flex-col gap-3">
-            {page.scopes.map((scope: ApiScope) => (
+            {API_SCOPES.map((scope) => (
               <Checkbox key={scope} value={scope}>
                 <Checkbox.Content>
                   <Checkbox.Control>

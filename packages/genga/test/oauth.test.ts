@@ -214,7 +214,7 @@ describe('OAuth for the MCP server', () => {
         expect(await response.json()).toMatchObject({
           resource: MCP_URL,
           authorization_servers: [SITE],
-          scopes_supported: ['read', 'write', 'publish'],
+          scopes_supported: ['read', 'write'],
         });
       }
     });
@@ -363,6 +363,13 @@ describe('OAuth for the MCP server', () => {
         arguments: { collection: 'journal', data: { title: 'Non' } },
       })) as CallToolResult;
       expect(result.isError).toBe(true);
+    });
+
+    it('lets the person add the publish scope that the client did not ask for', async () => {
+      const editor = await createUser(genga, 'editor');
+      const provider = await connect(editor, new MemoryProvider(), ['read', 'write', 'publish']);
+      expect(provider.authorizationUrl?.searchParams.get('scope')).toBe('read write');
+      expect(provider.saved?.scope).toBe('read write publish');
     });
   });
 

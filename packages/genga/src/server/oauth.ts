@@ -286,7 +286,8 @@ export function createOAuth(
     return {
       resource,
       authorization_servers: [issuer],
-      scopes_supported: [...API_SCOPES],
+      // The MCP specification asks for the minimal scopes here. The consent page offers `publish` too.
+      scopes_supported: [...DEFAULT_OAUTH_SCOPES],
       bearer_methods_supported: ['header'],
       resource_name: 'Genga',
     };
@@ -494,7 +495,7 @@ export function createOAuth(
         ...base,
       });
     }
-    const scopes = request.scopes.filter((scope) => decision.scopes.includes(scope));
+    const scopes = API_SCOPES.filter((scope) => decision.scopes.includes(scope));
     if (!scopes.length) throw new GengaError(400, 'bad_request', 'Choisissez au moins une portée.');
     const code = newSecret();
     await sql`
