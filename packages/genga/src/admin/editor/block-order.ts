@@ -1,0 +1,8 @@
+/** Moves the item at `from` to the position `to`. The other items keep their order. */
+export function moveItem<T>(items: readonly T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= items.length || to >= items.length) return [...items];
+  const next = [...items];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
