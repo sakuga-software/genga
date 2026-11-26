@@ -18,7 +18,8 @@ export type GengaPreviewProps = {
  * - Client blocks and `usePreviewData` get each change of the editor at once.
  * - After each autosave, the page asks the server again (`router.refresh()`), so Server
  *   Component blocks show the saved draft.
- * - The fresh preview tokens of the editor go to the entry route, which renews the cookie.
+ * - The fresh preview tokens of the editor go to the entry route, which renews the cookie. Then
+ *   the page asks the server again.
  */
 export function GengaPreview({ documentId, adminOrigin, endpoint = '/api/genga/preview' }: GengaPreviewProps) {
   const router = useRouter();
@@ -35,7 +36,13 @@ export function GengaPreview({ documentId, adminOrigin, endpoint = '/api/genga/p
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ documentId, token }),
-          }).catch((error: unknown) => console.error('[genga] The preview token was not renewed.', error));
+          })
+            .then((response) => {
+              if (!response.ok) throw new Error(`The entry route answered ${response.status}.`);
+              // After an expired token the page shows the published version: the refresh shows the draft again.
+              startTransition(() => router.refresh());
+            })
+            .catch((error: unknown) => console.error('[genga] The preview token was not renewed.', error));
         },
       }),
     [documentId, adminOrigin, endpoint, router],

@@ -87,6 +87,6 @@ npm trust github @genga-cms/next --file release-npm.yml \
   --repository sakuga-software/genga --environment npm --allow-publish
 ```
 
-WARNING: a trusted publisher needs a package that exists on npm. Before the first release of a
-new package, the owner of the `@genga-cms` organization must create the package, then set its
-trusted publisher. Otherwise the publication of that package fails.
+WARNING: set the trusted publisher of a new package before its first release. Without it, the
+publication of that package fails. If npm refuses a trusted publisher for a package that it does
+not have yet, the owner of the `@genga-cms` organization publishes a first version by hand.
