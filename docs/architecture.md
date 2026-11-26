@@ -41,7 +41,7 @@ packages/genga
       documents.ts     create, saveDraft, publish, unpublish, restore, list, delete
       published.ts     findPublished, list, sitemap, loadForRoute (preview aware)
       media.ts         upload, sizes with sharp, serve, delete
-      storage/         StorageAdapter interface, local adapter
+      storage/         StorageAdapter interface, local and S3 adapters
       admin.ts         loaders and actions of the admin routes
       api.ts           JSON API under /admin/api/*
     admin/             entry "genga/admin": route components of the admin

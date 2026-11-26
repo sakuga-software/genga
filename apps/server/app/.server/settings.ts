@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { MIN_SECRET_LENGTH, parseOrigins } from 'genga/server';
+import { MIN_SECRET_LENGTH, parseOrigins, type S3StorageOptions } from 'genga/server';
 
 export type Settings = {
   databaseUrl: string;
@@ -24,6 +24,8 @@ export type Settings = {
   rateLimit: number;
   /** The MCP endpoint: on by default at `/mcp`. `uploadPorts` is null for the default of genga. */
   mcp: { enabled: boolean; path: string; uploadPorts: number[] | null };
+  /** The S3 bucket of the media files, or null for the directory `mediaDir`. */
+  s3: S3StorageOptions | null;
 };
 
 export class SettingsError extends Error {
@@ -69,6 +71,57 @@ function ports(value: string | undefined, name: string, problems: string[]): num
     return null;
   }
   return parsed;
+}
+
+function signedUrlTtl(value: string | undefined, problems: string[]): number {
+  const ttl = integer(value, 3600, 'GENGA_S3_SIGNED_URL_TTL', problems, 60);
+  if (ttl <= 604_800) return ttl;
+  problems.push('GENGA_S3_SIGNED_URL_TTL must be 604800 seconds (7 days) or less.');
+  return 3600;
+}
+
+const S3_DELIVERIES = ['proxy', 'public', 'signed'] as const;
+
+/** `GENGA_S3_BUCKET` turns S3 on. The messages never contain a key or a secret. */
+function s3Settings(env: NodeJS.ProcessEnv, problems: string[]): S3StorageOptions | null {
+  const bucket = env.GENGA_S3_BUCKET?.trim();
+  if (!bucket) return null;
+  const accessKeyId = env.GENGA_S3_ACCESS_KEY_ID?.trim() || env.AWS_ACCESS_KEY_ID?.trim() || '';
+  const secretAccessKey = env.GENGA_S3_SECRET_ACCESS_KEY?.trim() || env.AWS_SECRET_ACCESS_KEY?.trim() || '';
+  if (!accessKeyId || !secretAccessKey) {
+    problems.push('GENGA_S3_ACCESS_KEY_ID and GENGA_S3_SECRET_ACCESS_KEY are required with GENGA_S3_BUCKET.');
+  }
+  const endpoint = env.GENGA_S3_ENDPOINT?.trim().replace(/\/+$/, '') || undefined;
+  if (endpoint && !/^https?:\/\/[^/]+$/.test(endpoint)) {
+    problems.push(`GENGA_S3_ENDPOINT must be an origin like https://s3.fr-par.scw.cloud, not "${endpoint}".`);
+  }
+  const delivery = env.GENGA_S3_DELIVERY?.trim().toLowerCase() || 'proxy';
+  if (!(S3_DELIVERIES as readonly string[]).includes(delivery)) {
+    problems.push(`GENGA_S3_DELIVERY must be proxy, public or signed, not "${env.GENGA_S3_DELIVERY}".`);
+  }
+  const publicUrl = env.GENGA_S3_PUBLIC_URL?.trim() || undefined;
+  if (delivery === 'public' && !/^https?:\/\/./.test(publicUrl ?? '')) {
+    problems.push(
+      'GENGA_S3_PUBLIC_URL is required with GENGA_S3_DELIVERY=public, for example https://media.example.com.',
+    );
+  }
+  const pathStyle = env.GENGA_S3_FORCE_PATH_STYLE?.trim().toLowerCase();
+  if (pathStyle && !['true', 'false', '1', '0'].includes(pathStyle)) {
+    problems.push(`GENGA_S3_FORCE_PATH_STYLE must be true or false, not "${env.GENGA_S3_FORCE_PATH_STYLE}".`);
+  }
+  return {
+    bucket,
+    region: env.GENGA_S3_REGION?.trim() || env.AWS_REGION?.trim() || undefined,
+    endpoint,
+    accessKeyId,
+    secretAccessKey,
+    sessionToken: env.AWS_SESSION_TOKEN?.trim() || undefined,
+    prefix: env.GENGA_S3_PREFIX?.trim() || undefined,
+    forcePathStyle: pathStyle ? ['true', '1'].includes(pathStyle) : undefined,
+    delivery: delivery as S3StorageOptions['delivery'],
+    publicUrl,
+    signedUrlExpiresIn: signedUrlTtl(env.GENGA_S3_SIGNED_URL_TTL, problems),
+  };
 }
 
 /** Reads and checks the environment. Throws a `SettingsError` that lists every problem. */
@@ -156,6 +209,7 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
       path: mcpPath,
       uploadPorts: ports(env.GENGA_MCP_UPLOAD_PORTS, 'GENGA_MCP_UPLOAD_PORTS', problems),
     },
+    s3: s3Settings(env, problems),
   };
   if (problems.length) throw new SettingsError(problems);
   return settings;

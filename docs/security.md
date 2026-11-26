@@ -50,6 +50,9 @@ The admin (`/admin` by default) sends `X-Robots-Tag: noindex`, `Content-Security
 - `/media/*` answers only for keys that match `^[a-f0-9]{64}(-w\d+)?\.[a-z0-9]+$` and have a
   database row. It sends `X-Content-Type-Options: nosniff` and
   `Content-Security-Policy: sandbox; default-src 'none'`. PDF files download as attachments.
+- With S3 storage, `proxy` keeps these headers. `signed` redirects to a presigned URL after the
+  same key check. `public` serves the files from the bucket or a CDN, without these two headers:
+  use another domain than the admin.
 
 ## Preview
 

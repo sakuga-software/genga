@@ -61,6 +61,16 @@ function toItem(row: MediaRow, mediaPath: string): MediaItem {
   return { ...toMediaObject(row, mediaPath), size: row.size, createdAt: row.created_at.toISOString() };
 }
 
+/** The base of media URLs: the public URL of the storage, or the media path of Genga. */
+function mediaBase(ctx: GengaContext) {
+  return ctx.storage.publicBaseUrl ?? ctx.mediaPath;
+}
+
+/** A PDF downloads instead of opening in the browser, from Genga and from the storage. */
+function attachment(filename: string) {
+  return `attachment; filename="${filename.replace(/[^\w.-]/g, '_')}"`;
+}
+
 export async function loadMediaMap(
   ctx: GengaContext,
   fields: Fields,
@@ -69,7 +79,7 @@ export async function loadMediaMap(
   const ids = collectMediaIds(fields, data, ctx.blocks).filter(isUuid);
   if (!ids.length) return new Map();
   const rows = await ctx.sql<MediaRow[]>`SELECT * FROM genga_media WHERE id = ANY(${ids}::uuid[])`;
-  return new Map(rows.map((row) => [row.id, toMediaObject(row, ctx.mediaPath)]));
+  return new Map(rows.map((row) => [row.id, toMediaObject(row, mediaBase(ctx))]));
 }
 
 function cleanFilename(name: string): string {
@@ -111,7 +121,7 @@ function lockHash(tx: TransactionSql, hash: string) {
 
 export function createMedia(ctx: GengaContext) {
   const { sql } = ctx;
-  const toMediaItem = (row: MediaRow) => toItem(row, ctx.mediaPath);
+  const toMediaItem = (row: MediaRow) => toItem(row, mediaBase(ctx));
 
   function canPublishSomewhere(user: PublicUser) {
     return Object.values(ctx.config.collections).some((collection) => can(user, 'publish', collection.access));
@@ -185,10 +195,16 @@ export function createMedia(ctx: GengaContext) {
         await ctx.storage.put(sizeKey, size.body, 'image/webp');
         sizes.push({ width: size.width, key: sizeKey });
       }
-      await ctx.storage.put(key, body, detected.mime);
+      const filename = cleanFilename(file.name || 'fichier');
+      await ctx.storage.put(
+        key,
+        body,
+        detected.mime,
+        detected.mime === 'application/pdf' ? { contentDisposition: attachment(filename) } : undefined,
+      );
       const [row] = await tx<MediaRow[]>`
         INSERT INTO genga_media (hash, key, filename, mime, size, width, height, alt, sizes, created_by)
-        VALUES (${hash}, ${key}, ${cleanFilename(file.name || 'fichier')}, ${detected.mime}, ${body.length},
+        VALUES (${hash}, ${key}, ${filename}, ${detected.mime}, ${body.length},
           ${width}, ${height}, ${String(alt).slice(0, 500)}, ${tx.json(sizes as never)}, ${user.id})
         RETURNING *
       `;
@@ -291,6 +307,20 @@ export function createMedia(ctx: GengaContext) {
     const isOriginal = row?.key === key;
     const isSize = row?.sizes?.some((size) => size.key === key);
     if (!row || (!isOriginal && !isSize)) return new Response('Not found', { status: 404 });
+    const disposition = isOriginal && row.mime === 'application/pdf' ? attachment(row.filename) : undefined;
+    if (ctx.storage.signedUrl) {
+      const signed = await ctx.storage.signedUrl(key, { contentDisposition: disposition });
+      // A cache keeps the redirect for less time than the signature lasts.
+      const maxAge = Math.max(0, Math.min(300, Math.floor(signed.expiresIn / 4)));
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: signed.url,
+          'Cache-Control': `public, max-age=${maxAge}`,
+          'Referrer-Policy': 'no-referrer',
+        },
+      });
+    }
     const file = await ctx.storage.get(key);
     if (!file) return new Response('Not found', { status: 404 });
     const headers = new Headers({
@@ -301,9 +331,7 @@ export function createMedia(ctx: GengaContext) {
       'Content-Security-Policy': "sandbox; default-src 'none'",
       'Cross-Origin-Resource-Policy': ctx.mediaResourcePolicy,
     });
-    if (row.mime === 'application/pdf') {
-      headers.set('Content-Disposition', `attachment; filename="${row.filename.replace(/[^\w.-]/g, '_')}"`);
-    }
+    if (disposition) headers.set('Content-Disposition', disposition);
     return new Response(file.body, { headers });
   }
 

@@ -1,4 +1,4 @@
-import { createGenga, type Genga } from 'genga/server';
+import { createGenga, s3StorageAdapter, type Genga } from 'genga/server';
 import { data } from 'react-router';
 import { loadConfigFile } from './config-file';
 import { readSettings, SettingsError, type Settings } from './settings';
@@ -33,6 +33,7 @@ async function boot(): Promise<GengaServer> {
     previewOrigins: settings.previewOrigins,
     previewSecret: settings.secret,
     mediaDir: settings.mediaDir,
+    storage: settings.s3 ? s3StorageAdapter(settings.s3) : undefined,
     mediaResourcePolicy: 'cross-origin',
     adminEmail: settings.adminEmail,
     secureCookies: settings.publicUrl.startsWith('https:'),

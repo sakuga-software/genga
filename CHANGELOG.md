@@ -19,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   and `defineBlockComponents` render the blocks: Client Component blocks follow each keystroke
   in the preview, Server Component blocks refresh after each autosave. `usePreviewData` and
   `RichText`. See `packages/next/README.md` and `examples/next`.
+- `s3StorageAdapter()`: media files in an S3-compatible bucket (AWS S3, Scaleway, MinIO), with
+  `proxy`, `public` or `signed` delivery. The server image reads `GENGA_S3_*`. With S3, several
+  server replicas share the files. `StorageAdapter` gains the optional `publicBaseUrl` and
+  `signedUrl`, and `put` an optional `contentDisposition`.
 - `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
   public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
   answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer

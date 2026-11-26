@@ -143,7 +143,55 @@ describe('settings', () => {
       secret: null,
       siteUrl: null,
       mcp: { enabled: true, path: '/mcp', uploadPorts: null },
+      s3: null,
     });
+  });
+
+  it('reads the S3 settings, and never puts the secret in a message', () => {
+    const secret = 'super-secret-value-1234567890';
+    const s3 = {
+      GENGA_S3_BUCKET: 'media',
+      GENGA_S3_ENDPOINT: 'https://s3.fr-par.scw.cloud/',
+      GENGA_S3_REGION: 'fr-par',
+      GENGA_S3_ACCESS_KEY_ID: 'SCWEXAMPLE',
+      GENGA_S3_SECRET_ACCESS_KEY: secret,
+      GENGA_S3_PREFIX: 'genga',
+      GENGA_S3_DELIVERY: 'signed',
+      GENGA_S3_SIGNED_URL_TTL: '900',
+    };
+    expect(readSettings({ ...env, ...s3 }).s3).toMatchObject({
+      bucket: 'media',
+      endpoint: 'https://s3.fr-par.scw.cloud',
+      region: 'fr-par',
+      prefix: 'genga',
+      delivery: 'signed',
+      signedUrlExpiresIn: 900,
+    });
+    expect(
+      readSettings({ ...env, GENGA_S3_BUCKET: 'b', AWS_ACCESS_KEY_ID: 'a', AWS_SECRET_ACCESS_KEY: 's' }).s3,
+    ).toMatchObject({
+      accessKeyId: 'a',
+      delivery: 'proxy',
+    });
+    for (const [values, problem] of [
+      [{ GENGA_S3_SECRET_ACCESS_KEY: '' }, 'GENGA_S3_ACCESS_KEY_ID and GENGA_S3_SECRET_ACCESS_KEY are required'],
+      [{ GENGA_S3_DELIVERY: 'cdn' }, 'GENGA_S3_DELIVERY must be proxy, public or signed'],
+      [{ GENGA_S3_DELIVERY: 'public' }, 'GENGA_S3_PUBLIC_URL is required'],
+      [{ GENGA_S3_ENDPOINT: 'https://s3.example/x' }, 'GENGA_S3_ENDPOINT must be an origin'],
+      [{ GENGA_S3_SIGNED_URL_TTL: '999999' }, 'GENGA_S3_SIGNED_URL_TTL must be 604800 seconds'],
+      [{ GENGA_S3_FORCE_PATH_STYLE: 'maybe' }, 'GENGA_S3_FORCE_PATH_STYLE must be true or false'],
+    ] as const) {
+      const error = (() => {
+        try {
+          readSettings({ ...env, ...s3, ...values });
+        } catch (caught) {
+          return caught as Error;
+        }
+        return null;
+      })();
+      expect(error?.message).toContain(problem);
+      expect(error?.message).not.toContain(secret);
+    }
   });
 
   it('reads the MCP switch and path', () => {
