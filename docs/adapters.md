@@ -960,8 +960,9 @@ Risks (check in the first days of the phase that needs them):
    `SameSite=None; Secure` and without `Partitioned`; `next dev` sets `SameSite=Lax`. In a frame on another site,
    WebKit drops this cookie, and Chromium and Firefox keep it. The preview entry route sets the same cookie again
    with `Partitioned`: then Draft Mode works in Chromium, Firefox and WebKit, in a frame on the same site and on
-   another site, for static and dynamic pages. The fallback route is not necessary. Not tested: Safari itself, and
-   Chromium when the user blocks third-party cookies.
+   another site, for static and dynamic pages. The fallback route is not necessary. WebKit on Linux (GNOME Web)
+   blocks every cookie of a frame on another site, `Partitioned` included: there, only the same-site setup gives a
+   preview. Not tested: Safari itself, and Chromium when the user blocks third-party cookies.
 
 2. **Admin CSP.** Confirm that HeroUI, React Aria and TipTap work with `style-src 'self'` and
    `style-src-attr 'unsafe-inline'`.

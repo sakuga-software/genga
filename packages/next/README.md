@@ -53,7 +53,9 @@ server, set `previewUrl` of each collection to `https://www.example.com/api/geng
 - **Preview.** The editor opens the entry route with a preview token. The route checks the token
   with the Genga server, turns Draft Mode on, and keeps the token in an `HttpOnly` cookie. In
   production both cookies are `SameSite=None; Secure; Partitioned`, so the preview works in the
-  admin frame also when the admin is on another site. The token never goes in the page URL.
+  admin frame also when the admin is on another site (Chrome, Firefox, Safari). Browsers that
+  block every third-party cookie (GNOME Web) need the admin on the same site, for example
+  `cms.example.com` for `www.example.com`. The token never goes in the page URL.
 - **Blocks.** `defineBlockComponents(config, { hero: Hero })` maps block types to components.
   In a preview, a Client Component block (`'use client'`) follows each keystroke. A Server
   Component block shows the draft after each autosave, when `<GengaPreview>` refreshes the page.
