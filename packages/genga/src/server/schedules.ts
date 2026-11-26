@@ -25,7 +25,12 @@ function isRefusal(error: unknown): error is GengaError {
  * others skip the run while a session advisory lock is held. Each action also deletes its own
  * row in its transaction, so an action runs once even if two processes list the same row.
  */
-export function createScheduler(ctx: GengaContext, documents: GengaDocuments, options: SchedulerOptions = {}) {
+export function createScheduler(
+  ctx: GengaContext,
+  documents: GengaDocuments,
+  options: SchedulerOptions = {},
+  maxConnections = 10,
+) {
   const { sql, log } = ctx;
   let timer: ReturnType<typeof setInterval> | null = null;
   let running: Promise<number> | null = null;
@@ -80,6 +85,9 @@ export function createScheduler(ctx: GengaContext, documents: GengaDocuments, op
   }
 
   async function runOnce(): Promise<number> {
+    // The lock holds one connection, and the actions need another one. In a pool of one, the
+    // row delete of each action alone keeps it to one run.
+    if (maxConnections < 2) return runLocked();
     // A session lock belongs to one connection: reserve it, so the unlock goes to the same one.
     const connection = await sql.reserve();
     try {

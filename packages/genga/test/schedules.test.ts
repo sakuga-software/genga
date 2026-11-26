@@ -262,4 +262,24 @@ describe('scheduled publish and unpublish', () => {
       await timed.close();
     }
   });
+
+  it('runs with a pool of one connection', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const id = await draftDocument(editor);
+    await ctx.genga.documents.schedule(editor, id, { publishAt: new Date(Date.now() + HOUR).toISOString() });
+    await makeDue(id, 'publish');
+    const single = createGenga(testConfig, {
+      databaseUrl: TEST_URL,
+      siteUrl: SITE,
+      maxConnections: 1,
+      scheduler: false,
+      logger: { info: () => {}, warn: () => {}, error: console.error },
+    });
+    try {
+      await single.ready();
+      expect(await single.runSchedules()).toBe(1);
+    } finally {
+      await single.close();
+    }
+  }, 10_000);
 });

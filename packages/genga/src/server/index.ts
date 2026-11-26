@@ -192,7 +192,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   const source = createEmbeddedSource({ ctx, auth, published, reads });
   const api = createApi(services);
   const mcp = createMcp(services, mcpOptions ?? {});
-  const scheduler = createScheduler(ctx, documents, options.scheduler || {});
+  const scheduler = createScheduler(ctx, documents, options.scheduler || {}, options.maxConnections ?? 10);
 
   let ready: Promise<void> | null = null;
   function whenReady(): Promise<void> {
