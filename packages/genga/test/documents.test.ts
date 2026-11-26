@@ -27,6 +27,24 @@ describe('documents', () => {
     await expect(ctx.genga.documents.publish(editor, id, 1)).rejects.toMatchObject({ status: 409 });
   });
 
+  it('labels the author with the name, else the email, also for a disabled account', async () => {
+    const editor = await createUser(ctx.genga, 'editor');
+    const seed = await createUser(ctx.genga, 'editor', 'seed@genga.test');
+    await ctx.genga.sql`UPDATE genga_users SET name = '', disabled_at = now() WHERE id = ${seed.id}`;
+    const seeded = await ctx.genga.documents.create(seed, 'journal', { title: 'Seed' });
+    await ctx.genga.documents.create(editor, 'journal', { title: 'Editor' });
+    await ctx.genga.documents.publish(seed, seeded.id, 1);
+
+    const list = await ctx.genga.documents.list(editor, 'journal');
+    expect(Object.fromEntries(list.map((doc) => [doc.title, doc.authorName]))).toEqual({
+      Seed: 'seed@genga.test',
+      Editor: 'editor',
+    });
+    expect((await ctx.genga.documents.get(editor, seeded.id)).authorName).toBe('seed@genga.test');
+    const versions = await ctx.genga.documents.versions(editor, seeded.id);
+    expect(versions.map((version) => version.authorName)).toEqual(['seed@genga.test']);
+  });
+
   it('publishes, unpublishes and restores a version', async () => {
     const editor = await createUser(ctx.genga, 'editor');
     const { id } = await ctx.genga.documents.create(editor, 'journal', { title: 'Premier' });
