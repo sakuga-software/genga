@@ -48,7 +48,9 @@ export function useDraft(options: {
   const inFlight = useRef<Promise<boolean> | null>(null);
   const timer = useRef<number | null>(null);
   const saveStateRef = useRef<SaveState>('saved');
-  saveStateRef.current = saveState;
+  useEffect(() => {
+    saveStateRef.current = saveState;
+  }, [saveState]);
 
   const save = useCallback(async (): Promise<boolean> => {
     if (timer.current) {

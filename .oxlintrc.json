@@ -2,6 +2,11 @@
   "plugins": ["oxc", "react", "typescript"],
   "ignorePatterns": ["**/dist/**", "**/build/**", "**/.react-router/**"],
   "rules": {
-    "no-nested-ternary": "error"
+    "no-nested-ternary": "error",
+    "react/no-did-update-set-state": "error",
+    "react/refs": "error",
+    "react/set-state-in-effect": "error",
+    "react-hooks/exhaustive-deps": "error",
+    "react-hooks/rules-of-hooks": "error"
   }
 }

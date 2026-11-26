@@ -15,10 +15,14 @@ export function CollectionPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const [query, setQuery] = useState(search);
+  const [loadedSearch, setLoadedSearch] = useState(search);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => setQuery(search), [search]);
+  if (search !== loadedSearch) {
+    setLoadedSearch(search);
+    setQuery(search);
+  }
 
   useEffect(() => {
     if (query === search) return;

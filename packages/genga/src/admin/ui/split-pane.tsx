@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { useBrowserValue } from './use-browser-value';
 
 type SplitPaneProps = {
   start: ReactNode;
@@ -55,19 +56,15 @@ export function SplitPane({
   const container = useRef<HTMLDivElement>(null);
   const startId = useId();
   const max = 100 - minEnd;
-  const [size, setSize] = useState(() => clamp(defaultSize, minStart, max));
   const [dragging, setDragging] = useState(false);
   const fullKey = storageKey ? `genga:split:${storageKey}` : null;
-
-  useEffect(() => {
-    if (!fullKey) return;
-    const stored = readStoredSize(fullKey);
-    if (stored !== null) setSize(clamp(stored, minStart, max));
-  }, [fullKey, minStart, max]);
+  const storedSize = useBrowserValue(() => (fullKey ? readStoredSize(fullKey) : null), null);
+  const [chosenSize, setChosenSize] = useState<number | null>(null);
+  const size = clamp(chosenSize ?? storedSize ?? defaultSize, minStart, max);
 
   function update(next: number) {
     const value = clamp(next, minStart, max);
-    setSize(value);
+    setChosenSize(value);
     if (fullKey) storeSize(fullKey, value);
   }
 
