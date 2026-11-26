@@ -87,6 +87,31 @@ export const SOURCE_PREVIEW_HEADERS = {
   'X-Robots-Tag': 'noindex',
 } as const;
 
+const etags = new WeakMap<object, string>();
+
+/** FNV-1a, 32 bits. It runs on edge runtimes, where `node:crypto` is missing. */
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * The ETag of a published document, quoted. The version id alone is not enough: the data embeds
+ * the published targets of its relation fields, which change without a new version.
+ */
+export function documentEtag(doc: { versionId: string | null; data: unknown }): string | undefined {
+  if (!doc.versionId) return undefined;
+  const cached = typeof doc.data === 'object' && doc.data !== null ? etags.get(doc.data) : undefined;
+  if (cached) return cached;
+  const etag = `"${doc.versionId}.${fnv1a(JSON.stringify(doc.data))}"`;
+  if (typeof doc.data === 'object' && doc.data !== null) etags.set(doc.data, etag);
+  return etag;
+}
+
 export function publishedHeaders(etag?: string): Headers {
   const headers = new Headers(PUBLISHED_HEADERS);
   if (etag) headers.set('ETag', etag);

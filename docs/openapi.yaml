@@ -378,10 +378,29 @@ components:
       properties:
         type:
           type: string
-          enum: [text, textarea, slug, number, boolean, select, date, url, media, richText, tags, array, blocks, group]
+          enum:
+            [
+              text,
+              textarea,
+              slug,
+              number,
+              boolean,
+              select,
+              date,
+              url,
+              media,
+              richText,
+              tags,
+              array,
+              blocks,
+              group,
+              relation,
+            ]
         label: { type: string }
         description: { type: string }
         required: { type: boolean }
+        to: { type: string, description: 'For a relation field: the collection of the target documents.' }
+        multiple: { type: boolean, description: 'For a relation field: a list of documents instead of one.' }
       additionalProperties: true
     Collection:
       type: object
@@ -427,6 +446,28 @@ components:
             properties:
               width: { type: integer }
               url: { type: string, format: uri }
+    RelatedDocument:
+      type: object
+      description: |
+        The published version of a relation target. Its relation fields are RelationRef objects:
+        Genga resolves one level only.
+      required: [id, collection, slug, path, title, publishedAt, data]
+      properties:
+        id: { type: string, format: uuid }
+        collection: { type: string }
+        slug: { type: string }
+        path: { type: string, description: The URL of the target on the site. }
+        title: { type: string }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        data:
+          { type: object, additionalProperties: true, description: The field values, with the rules of Document.data. }
+    RelationRef:
+      type: object
+      description: A relation inside the data of a RelatedDocument. Read the document by its id if you need it.
+      required: [id, collection]
+      properties:
+        id: { type: string, format: uuid }
+        collection: { type: string }
     Document:
       type: object
       required: [id, collection, slug, path, versionId, publishedAt, data]
@@ -445,5 +486,6 @@ components:
           description: |
             The field values. A media field is a Media object or null. A richText field is the
             TipTap JSON plus `html`, the sanitized HTML, or null. A blocks field is a list of objects with `_id`, `_type` and
-            the block fields.
+            the block fields. A relation field is a RelatedDocument or null, or with `multiple` a list of RelatedDocument:
+            published targets only.
           additionalProperties: true

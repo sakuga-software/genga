@@ -38,6 +38,8 @@ export function defaultValue(field: Field): unknown {
     case 'media':
     case 'richText':
       return null;
+    case 'relation':
+      return field.multiple ? [] : null;
     case 'tags':
     case 'array':
     case 'blocks':
@@ -104,6 +106,13 @@ function baseSchema(field: Field, mode: SchemaMode, blocks: BlockSchemas): z.Zod
     case 'media': {
       const id = z.string().regex(UUID_PATTERN);
       return mode === 'publish' && field.required ? id : id.nullable();
+    }
+    case 'relation': {
+      const id = z.string().regex(UUID_PATTERN);
+      if (!field.multiple) return mode === 'publish' && field.required ? id : id.nullable();
+      let list = z.array(id).max(field.maxItems ?? 100);
+      if (mode === 'publish' && field.required) list = list.min(1, 'Choisissez au moins un document.');
+      return list.refine((ids) => new Set(ids).size === ids.length, 'Un document est choisi deux fois.');
     }
     case 'richText':
       return mode === 'publish' && field.required ? richTextDocSchema : richTextDocSchema.nullable();

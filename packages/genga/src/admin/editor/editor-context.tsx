@@ -1,11 +1,14 @@
 import { createContext, useContext } from 'react';
 import type { SerializedSchema } from '../../config';
-import type { MediaObject } from '../../fields/types';
+import type { MediaObject, RelatedDocument } from '../../fields/types';
 
 export type EditorContextValue = {
   schema: SerializedSchema;
   media: ReadonlyMap<string, MediaObject>;
   rememberMedia: (media: MediaObject) => void;
+  /** The published relation targets that the preview shows, by `<collection>\u0000<id>`. */
+  related: ReadonlyMap<string, RelatedDocument>;
+  rememberRelated: (related: RelatedDocument) => void;
   /** Validation messages by field path, for example `body.2.caption`. */
   errors: Record<string, string>;
   selectedBlockId: string | null;

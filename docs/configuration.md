@@ -83,24 +83,45 @@ See [preview bridge](./preview-bridge.md#a-site-on-another-origin).
 
 All fields take `label`, `description` and `required`.
 
-| Builder    | Value                                  | More options                                                      |
-| ---------- | -------------------------------------- | ----------------------------------------------------------------- |
-| `text`     | `string`                               | `maxLength`, `placeholder`, `defaultValue`                        |
-| `textarea` | `string`                               | `maxLength`, `rows`, `defaultValue`                               |
-| `slug`     | `string`                               | `from` (field to slugify)                                         |
-| `number`   | `number \| null`                       | `min`, `max`, `integer`, `defaultValue`                           |
-| `boolean`  | `boolean`                              | `defaultValue`                                                    |
-| `select`   | `string`                               | `options: { label, value }[]`, `defaultValue`                     |
-| `date`     | `string` (`YYYY-MM-DD`)                |                                                                   |
-| `url`      | `string`                               | `placeholder`. Allows http, https, mailto, tel and relative URLs. |
-| `tags`     | `string[]`                             | `maxItems`                                                        |
-| `media`    | `MediaObject \| null` (after populate) | `accept: 'image' \| 'any'`                                        |
-| `richText` | `RichTextDoc \| null`                  |                                                                   |
-| `array`    | `Array<{ _id } & values>`              | `fields`, `itemLabel`, `minItems`, `maxItems`                     |
-| `blocks`   | `BlockData[]`                          | `allowed` (block types)                                           |
-| `group`    | `values`                               | `fields`                                                          |
+| Builder    | Value                                                 | More options                                                      |
+| ---------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| `text`     | `string`                                              | `maxLength`, `placeholder`, `defaultValue`                        |
+| `textarea` | `string`                                              | `maxLength`, `rows`, `defaultValue`                               |
+| `slug`     | `string`                                              | `from` (field to slugify)                                         |
+| `number`   | `number \| null`                                      | `min`, `max`, `integer`, `defaultValue`                           |
+| `boolean`  | `boolean`                                             | `defaultValue`                                                    |
+| `select`   | `string`                                              | `options: { label, value }[]`, `defaultValue`                     |
+| `date`     | `string` (`YYYY-MM-DD`)                               |                                                                   |
+| `url`      | `string`                                              | `placeholder`. Allows http, https, mailto, tel and relative URLs. |
+| `tags`     | `string[]`                                            | `maxItems`                                                        |
+| `media`    | `MediaObject \| null` (after populate)                | `accept: 'image' \| 'any'`                                        |
+| `richText` | `RichTextDoc \| null`                                 |                                                                   |
+| `relation` | `RelatedDocument \| null`, or a list (after populate) | `to` (collection), `multiple`, `maxItems`                         |
+| `array`    | `Array<{ _id } & values>`                             | `fields`, `itemLabel`, `minItems`, `maxItems`                     |
+| `blocks`   | `BlockData[]`                                         | `allowed` (block types)                                           |
+| `group`    | `values`                                              | `fields`                                                          |
 
 `FieldValues<typeof fields>` gives the TypeScript type of the values.
+
+### Relations
+
+`relation({ to: 'authors' })` links a document to a document of `authors`.
+`relation({ to: 'posts', multiple: true, maxItems: 3 })` links to a list. The draft stores the
+document ids. The editor has a combobox that searches the target collection: it lists the
+documents that you can read, and every published document.
+
+On the site, `populate` gives the **published** version of each target, with its media, as a
+`RelatedDocument`: `{ id, collection, slug, path, title, publishedAt, data }`. A target that is not
+published is `null`, or left out of a list. The relations of a target stay `{ id, collection }`:
+one level only, so a cycle cannot loop. A preview shows the draft of the previewed document with
+the published version of its targets.
+
+- **Publish.** The publish refuses a target that is deleted or not in the collection `to`
+  (`missing_relation`). A target that exists but is not published does not stop the publish.
+- **Cache.** A publish, unpublish or delete of a target clears the cache of the collections that
+  point to it, and its event carries their tags (`genga:c:<collection>`). The `ETag` of a document
+  includes the data of its targets.
+- **Unknown collection.** `defineConfig` throws when `to` names a collection that does not exist.
 
 ### Access
 

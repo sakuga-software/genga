@@ -1,5 +1,5 @@
 import type { ApiScope, Role } from './access';
-import type { MediaObject } from './fields/types';
+import type { MediaObject, RelatedDocument } from './fields/types';
 
 /**
  * - `draft`: never published.
@@ -29,6 +29,16 @@ export type DocumentSummary = {
   authorName: string | null;
 };
 
+/** A document that a relation field can point to, as the picker of the admin lists it. */
+export type RelationOption = {
+  id: string;
+  collection: string;
+  title: string;
+  status: DocumentStatus;
+  /** The published version, when the picker asks for it by id. Null when the document is not live. */
+  related: RelatedDocument | null;
+};
+
 /** Where the editor loads the preview. `origin` is null when the preview has the origin of the admin. */
 export type PreviewTarget = { url: string; origin: string | null };
 
@@ -44,6 +54,8 @@ export type AdminDocument = DocumentSummary & {
   /** The URL of the preview frame, or null when the collection has no preview. */
   preview: PreviewTarget | null;
   media: Record<string, MediaObject>;
+  /** The published targets of the relation fields of the draft, by `<collection>\u0000<id>`. */
+  related: Record<string, RelatedDocument>;
   canPublish: boolean;
   canDelete: boolean;
 };

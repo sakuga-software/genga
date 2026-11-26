@@ -163,10 +163,10 @@ describe.each(sources)('GengaSource (%s)', (mode, source) => {
     expect(result.doc.id).toBe(fixture.liveId);
     expect(result.cache).toEqual({
       tags: ['genga', 'genga:c:journal', 'genga:d:journal:live'],
-      etag: `"${result.doc.versionId}"`,
+      etag: expect.stringMatching(new RegExp(`^"${result.doc.versionId}\\.[0-9a-z]+"$`)),
     });
     expect(result.headers.get('cache-control')).toBe('public, max-age=0, must-revalidate');
-    expect(result.headers.get('etag')).toBe(`"${result.doc.versionId}"`);
+    expect(result.headers.get('etag')).toBe(result.cache === 'no-store' ? null : result.cache.etag);
   });
 
   it('resolves a renamed slug to a 301 with the tags of both slugs', async () => {

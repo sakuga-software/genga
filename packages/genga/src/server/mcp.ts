@@ -56,6 +56,9 @@ const VALUE_FORMATS: Record<Field['type'], string> = {
   date: 'string "YYYY-MM-DD"',
   url: 'string: http, https, mailto, tel or a relative path',
   media: 'media id (uuid) from list_media or upload_media, or null',
+  relation:
+    'document id (uuid) of the collection in "to", from list_documents, or null. With "multiple": an array of ids. ' +
+    'The site shows only the published targets.',
   richText:
     'TipTap JSON: {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello","marks":[{"type":"bold"}]}]}]}. ' +
     'Nodes: paragraph, heading (attrs.level 2 to 4), bulletList, orderedList, listItem, blockquote, hardBreak, horizontalRule, codeBlock. ' +

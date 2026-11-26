@@ -9,6 +9,7 @@ import type { GengaDocuments } from './documents';
 import { badRequest, GengaError, notFound } from './errors';
 import { loadMediaMap, type GengaMedia } from './media';
 import { isAllowedOrigin } from './origin';
+import { loadRelationResolver, relationOptions } from './relations';
 import type { GengaUsers } from './users';
 
 export const ADMIN_HEADERS = {
@@ -92,7 +93,7 @@ export function createApi({ ctx, auth, documents, media, users, tokens }: Servic
         const body = await readJson(request);
         const restored = await documents.restore(user, id, String(body.versionId ?? ''), revision(body.draftRev));
         const doc = await documents.get(user, id);
-        return json({ ...restored, media: doc.media });
+        return json({ ...restored, media: doc.media, related: doc.related });
       }
     }
 
@@ -100,8 +101,22 @@ export function createApi({ ctx, auth, documents, media, users, tokens }: Servic
       const body = await readJson(request);
       const collection = documents.collectionOf(String(body.collection ?? ''));
       const data = tolerantRead(collection.fields, body.data, ctx.blocks);
-      const mediaMap = await loadMediaMap(ctx, collection.fields, data);
-      return json({ data: populate(collection.fields, data, ctx.blocks, mediaMap) });
+      const [mediaMap, resolve] = await Promise.all([
+        loadMediaMap(ctx, collection.fields, data),
+        loadRelationResolver(ctx, collection.fields, data),
+      ]);
+      return json({ data: populate(collection.fields, data, ctx.blocks, mediaMap, resolve) });
+    }
+
+    if (resource === 'relations' && !id && method === 'GET') {
+      const url = new URL(request.url);
+      const ids = url.searchParams.get('ids');
+      return json({
+        options: await relationOptions(ctx, user, url.searchParams.get('collection') ?? '', {
+          search: url.searchParams.get('q') ?? '',
+          ids: ids === null ? undefined : ids.split(',').slice(0, 200),
+        }),
+      });
     }
 
     if (resource === 'media') {

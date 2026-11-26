@@ -54,6 +54,13 @@ const fieldSchema: z.ZodType<Field> = z.lazy(() =>
     z.strictObject({ ...base, type: z.literal('url'), placeholder: z.string().optional() }),
     z.strictObject({ ...base, type: z.literal('media'), accept: z.enum(['image', 'any']).optional() }),
     z.strictObject({ ...base, type: z.literal('richText') }),
+    z.strictObject({
+      ...base,
+      type: z.literal('relation'),
+      to: z.string().min(1),
+      multiple: z.boolean().optional(),
+      maxItems: positive,
+    }),
     z.strictObject({ ...base, type: z.literal('tags'), maxItems: positive }),
     z.strictObject({
       ...base,

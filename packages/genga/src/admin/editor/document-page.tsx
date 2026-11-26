@@ -15,7 +15,7 @@ import { ArrowLeft, Check, CircleAlert, CloudUpload, EllipsisVertical, History, 
 import { Link, useLoaderData, useNavigate } from 'react-router';
 import { ApiError, apiRequest } from '../../client/api';
 import { blockSchemasFromSerialized } from '../../config';
-import type { MediaObject } from '../../fields/types';
+import type { MediaObject, RelatedDocument } from '../../fields/types';
 import { populate } from '../../populate';
 import { toPublicData } from '../../public-data';
 import { slugify } from '../../slugify';
@@ -90,6 +90,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
   const collection = schema.collections[doc.collection];
   const blocks = useMemo(() => blockSchemasFromSerialized(schema), [schema]);
   const [media, setMedia] = useState<Map<string, MediaObject>>(() => new Map(Object.entries(doc.media)));
+  const [related, setRelated] = useState<Map<string, RelatedDocument>>(() => new Map(Object.entries(doc.related)));
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [epoch, setEpoch] = useState(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -115,12 +116,18 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
     setMedia((current) => new Map(current).set(item.id, item));
   }, []);
 
+  const rememberRelated = useCallback((item: RelatedDocument) => {
+    setRelated((current) => new Map(current).set(`${item.collection}\u0000${item.id}`, item));
+  }, []);
+
   const selectBlock = useCallback((id: string | null) => setSelectedBlockId(id), []);
 
   const context: EditorContextValue = {
     schema,
     media,
     rememberMedia,
+    related,
+    rememberRelated,
     errors: draft.fieldErrors,
     selectedBlockId,
     selectBlock,
@@ -130,11 +137,17 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
 
   const [preview, setPreview] = useState<PreviewTarget | null>(doc.preview);
   const populated = useMemo(() => {
-    const data = populate<Record<string, unknown>>(collection.fields, draft.data, blocks, media);
+    const data = populate<Record<string, unknown>>(
+      collection.fields,
+      draft.data,
+      blocks,
+      media,
+      (field, id) => related.get(`${field.to}\u0000${id}`) ?? null,
+    );
     // A preview on another origin gets the shape of the public API: absolute media URLs and rich text HTML.
     if (!preview?.origin || typeof window === 'undefined') return data;
-    return toPublicData(collection.fields, data, blocks, window.location.origin);
-  }, [collection.fields, draft.data, blocks, media, preview?.origin]);
+    return toPublicData(collection.fields, data, blocks, window.location.origin, schema.collections);
+  }, [collection.fields, draft.data, blocks, media, related, preview?.origin, schema.collections]);
 
   const refreshPreview = useCallback(async () => {
     const result = await apiRequest<{ preview: PreviewTarget | null }>(`documents/${doc.id}/preview`);
@@ -248,6 +261,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
       status: DocumentStatus;
       draft: Record<string, unknown>;
       media: Record<string, MediaObject>;
+      related: Record<string, RelatedDocument>;
     };
     try {
       result = await apiRequest(`documents/${doc.id}/restore`, {
@@ -264,6 +278,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
       return;
     }
     setMedia((current) => new Map([...current, ...Object.entries(result.media)]));
+    setRelated((current) => new Map([...current, ...Object.entries(result.related)]));
     draft.replace(result.draft, result.draftRev, result.status);
     setEpoch((value) => value + 1);
     setAnnouncement('Version restaurée dans le brouillon.');
@@ -281,6 +296,7 @@ function DocumentEditor({ loaded }: { loaded: DocumentPageData }) {
   async function reloadFromServer() {
     const result = await apiRequest<{ document: AdminDocument }>(`documents/${doc.id}`);
     setMedia((current) => new Map([...current, ...Object.entries(result.document.media)]));
+    setRelated((current) => new Map([...current, ...Object.entries(result.document.related)]));
     draft.replace(result.document.draft, result.document.draftRev, result.document.status);
     setEpoch((value) => value + 1);
   }

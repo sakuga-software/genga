@@ -119,6 +119,12 @@ Errors have one shape:
   `innerHTML`. Links to other sites get `target="_blank" rel="noopener noreferrer"`.
 - A `blocks` field is a list of `{ _id, _type, ...fields }`. The block fields follow the same
   rules.
+- A `relation` field is the published version of its target: `{ id, collection, slug, path,
+  title, publishedAt, data }`, or `null`. With `multiple`, it is a list. A target that is not
+  published, or that was deleted, is `null` or left out of the list. The `data` of a target
+  follows the rules above, but its own relation fields stay `{ id, collection }`: Genga resolves
+  one level only. A preview shows the draft of the previewed document, with the published
+  version of its targets.
 
 ## Endpoints
 

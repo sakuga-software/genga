@@ -60,7 +60,7 @@ describe('public reads and preview', () => {
     });
     const first = await ctx.genga.documents.publish(user, id, 1);
     const live = await ctx.genga.published.loadForRoute(request(`/journal/${slug}`), 'journal', slug);
-    expect(live.headers.get('etag')).toBe(`"${first.versionId}"`);
+    expect(live.headers.get('etag')).toMatch(new RegExp(`^"${first.versionId}\\.[0-9a-z]+"$`));
     expect(live.headers.get('cache-control')).toBe('public, max-age=0, must-revalidate');
     expect((await ctx.genga.published.list('journal')).map((doc) => doc.slug)).toEqual([slug]);
 

@@ -32,6 +32,19 @@ export type ArrayField = BaseField & {
   maxItems?: number;
 };
 export type BlocksField = BaseField & { type: 'blocks'; allowed?: string[] };
+/**
+ * A link to documents of another collection, or of the same one. The draft stores document ids.
+ * `populate` gives the published version of each target; a target that is not live is left out.
+ */
+export type RelationField = BaseField & {
+  type: 'relation';
+  /** The collection of the target documents. */
+  to: string;
+  /** A list of documents instead of one. */
+  multiple?: boolean;
+  /** The maximum number of documents of a `multiple` relation. */
+  maxItems?: number;
+};
 export type GroupField = BaseField & { type: 'group'; fields: Fields };
 
 export type Field =
@@ -48,7 +61,8 @@ export type Field =
   | TagsField
   | ArrayField
   | BlocksField
-  | GroupField;
+  | GroupField
+  | RelationField;
 
 export type FieldType = Field['type'];
 
@@ -64,6 +78,26 @@ export type MediaObject = {
   width: number | null;
   height: number | null;
   sizes: { width: number; url: string }[];
+};
+
+/**
+ * A relation target inside the data of another relation target. Genga does not load it: read the
+ * document with its collection and id if you need it.
+ */
+export type RelationRef = { id: string; collection: string };
+
+/**
+ * A relation target after `populate`: the published version of the document. `data` holds its
+ * fields with media objects; its own relations are `RelationRef` values.
+ */
+export type RelatedDocument<T = Record<string, unknown>> = {
+  id: string;
+  collection: string;
+  slug: string;
+  path: string;
+  title: string;
+  publishedAt: string | null;
+  data: T;
 };
 
 /** A block after `populate`: `_id` and `_type` plus the values of the block fields. */
@@ -87,6 +121,10 @@ export type FieldValue<F extends Field> = F extends { type: 'text' | 'textarea' 
                 ? BlockData[]
                 : F extends { type: 'group'; fields: infer S extends Fields }
                   ? FieldValues<S>
-                  : unknown;
+                  : F extends { type: 'relation'; multiple: true }
+                    ? RelatedDocument[]
+                    : F extends { type: 'relation' }
+                      ? RelatedDocument | null
+                      : unknown;
 
 export type FieldValues<S extends Fields> = { [K in keyof S]: FieldValue<S[K]> };
