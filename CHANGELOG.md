@@ -49,6 +49,11 @@ All notable changes to the `genga` package. The format follows
 - `genga.api`, `genga.mcp` and `genga.media.serve`: use `genga.handle`. Each logs one warning
   per process. They leave at 1.0.
 
+### Fixed
+
+- In the Versions drawer, the « Enregistrer une version » button went past the edge of the
+  drawer and was cut, at all widths. The button is now below the note field (GNG-8).
+
 ## [0.2.0] - 2026-11-24
 
 ### Added

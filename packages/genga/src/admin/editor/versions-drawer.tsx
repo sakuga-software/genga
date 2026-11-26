@@ -34,7 +34,7 @@ export function VersionsDrawer({ isOpen, onOpenChange, versions, onRestore, onSa
             </Drawer.Header>
             <Drawer.Body className="flex flex-col gap-6">
               <form
-                className="flex items-end gap-2"
+                className="flex flex-col items-start gap-2"
                 onSubmit={async (event) => {
                   event.preventDefault();
                   setSaving(true);
@@ -46,7 +46,7 @@ export function VersionsDrawer({ isOpen, onOpenChange, versions, onRestore, onSa
                   }
                 }}
               >
-                <TextField value={note} onChange={setNote} className="flex-1" maxLength={200}>
+                <TextField value={note} onChange={setNote} className="w-full" maxLength={200}>
                   <Label>Note de version (facultatif)</Label>
                   <Input placeholder="Avant refonte de l’intro" />
                 </TextField>
