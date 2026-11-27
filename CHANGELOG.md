@@ -59,6 +59,8 @@ All notable changes to the `genga` package. The format follows
 
 - The admin showed « Inconnu » or « — » as the author when the account had no name. It now
   shows the email of the account, also when the account is disabled (GNG-9).
+- In the Versions drawer, the « Enregistrer une version » button went past the edge of the
+  drawer and was cut, at all widths. The button is now below the note field (GNG-8).
 
 ## [0.2.0] - 2026-11-24
 
