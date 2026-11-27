@@ -12,7 +12,12 @@ import { createReadableStreamFromReadable, writeReadableStreamToWritable } from 
  */
 export async function serveMcp(req, res, server) {
   if (!server?.settings.mcp.enabled) return false;
-  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  let url;
+  try {
+    url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+  } catch {
+    return false;
+  }
   if (url.pathname.replace(/\/+$/, '').toLowerCase() !== server.settings.mcp.path.toLowerCase()) return false;
   const headers = new Headers();
   try {

@@ -123,4 +123,15 @@ describe('MCP listener of the headless server', () => {
     expect(await serveMcp(req, res, { genga, settings })).toBe(true);
     expect(written.status).toBe(400);
   });
+
+  it('gives a request with a Host that is not a valid URL to React Router', async () => {
+    const req = {
+      method: 'POST',
+      url: '/agents',
+      headers: { host: 'cms test' },
+      rawHeaders: ['Host', 'cms test'],
+    } as unknown as http.IncomingMessage;
+    const settings = { mcp: { enabled: true, path: '/agents' } };
+    expect(await serveMcp(req, {} as http.ServerResponse, { genga, settings })).toBe(false);
+  });
 });
