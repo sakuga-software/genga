@@ -39,7 +39,6 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
   const [labels, setLabels] = useState<Map<string, TargetLabel>>(new Map());
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState<RelationOption[]>([]);
-  const [loading, setLoading] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const labelId = useId();
   const errorId = useId();
@@ -54,7 +53,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
     .join(' ');
   const baseId = useId();
   const groupRef = useRef<HTMLDivElement>(null);
-  const [pendingFocus, setPendingFocus] = useState<string | null>(null);
+  const pendingFocus = useRef<string | null>(null);
   const [active, setActive] = useState(false);
   const target = schema.collections[field.to];
   const maxItems = field.maxItems ?? 100;
@@ -93,32 +92,36 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
     };
   }, [field.to, missingKey, rememberRelated]);
 
+  // Each change that sets pendingFocus also changes the value of the field, so a render follows it.
   useEffect(() => {
-    if (!pendingFocus) return;
-    if (pendingFocus === 'group') groupRef.current?.focus();
-    else document.getElementById(pendingFocus)?.focus();
-    setPendingFocus(null);
-  }, [pendingFocus]);
+    const target = pendingFocus.current;
+    if (!target) return;
+    pendingFocus.current = null;
+    if (target === 'group') groupRef.current?.focus();
+    else document.getElementById(target)?.focus();
+  });
 
+  const searchKey = `${field.to}\n${search}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = active && loadedKey !== searchKey;
   // The search starts when the person first reaches the input: a page with many fields loads nothing more.
   useEffect(() => {
     if (!active) return;
     const run = (searchRun.current += 1);
-    setLoading(true);
     const timer = setTimeout(() => {
       void apiRequest<{ options: RelationOption[] }>(query(field.to, { q: search })).then(
         (result) => {
           if (run !== searchRun.current) return;
           setOptions(result.options);
-          setLoading(false);
+          setLoadedKey(searchKey);
         },
         () => {
-          if (run === searchRun.current) setLoading(false);
+          if (run === searchRun.current) setLoadedKey(searchKey);
         },
       );
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [active, field.to, search]);
+  }, [active, field.to, search, searchKey]);
 
   function titleOf(id: string) {
     return labels.get(id)?.title ?? (labels.has(id) ? 'Document indisponible' : 'Chargement…');
@@ -145,7 +148,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
     setSearch('');
     setRound((value) => value + 1);
     // At the maximum, the input goes away: the focus goes to the group of the field.
-    if (nowFull) setPendingFocus('group');
+    if (nowFull) pendingFocus.current = 'group';
     else setFocusInput(true);
     setAnnouncement(
       `${option?.title ?? 'Document'} ajouté.${nowFull ? ` Maximum de ${maxItems} documents atteint.` : ''}`,
@@ -169,7 +172,7 @@ export function RelationInput({ label, field, value, onChange, path }: RelationI
     // A move to the first or last place disables the pressed button: the focus goes to the other arrow.
     const pressedDisabled = offset < 0 ? position === 0 : position === next.length - 1;
     const up = offset < 0 !== pressedDisabled;
-    setPendingFocus(buttonId(item, up ? 'up' : 'down'));
+    pendingFocus.current = buttonId(item, up ? 'up' : 'down');
     setAnnouncement(`${titleOf(item)} déplacé en position ${position + 1} sur ${next.length}.`);
   }
 
