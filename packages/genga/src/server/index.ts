@@ -296,6 +296,7 @@ export {
 } from '../source';
 export { clientIp, hashPassword, verifyPassword, MIN_PASSWORD_LENGTH } from './auth';
 export { localStorageAdapter } from './storage/local';
+export { s3StorageAdapter, type S3Delivery, type S3StorageOptions } from './storage/s3';
 export type { StorageAdapter } from './storage/adapter';
 export { PREVIEW_HEADERS, PREVIEW_PARAM, type RouteResult } from './published';
 export {

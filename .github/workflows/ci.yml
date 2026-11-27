@@ -71,6 +71,19 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 20
+      # S3-compatible storage for the tests of the S3 adapter. This image starts MinIO without a command.
+      minio:
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+        env:
+          MINIO_ROOT_USER: genga
+          MINIO_ROOT_PASSWORD: genga-minio-test
+        ports:
+          - 9000
+        options: >-
+          --health-cmd "curl -fs http://localhost:9000/minio/health/live"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The pnpm installer needs Node: set up Node first.
@@ -79,12 +92,15 @@ jobs:
           node-version: 22
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - run: pnpm install --frozen-lockfile
-      - name: Point the tests at the Postgres service
+      - name: Point the tests at the Postgres and MinIO services
         run: |
           base="postgres://genga:genga@localhost:${{ job.services.postgres.ports['5432'] }}"
           echo "GENGA_TEST_ADMIN_URL=$base/genga" >> "$GITHUB_ENV"
           echo "GENGA_TEST_DATABASE_URL=$base/genga_test" >> "$GITHUB_ENV"
           echo "DATABASE_URL=$base/genga" >> "$GITHUB_ENV"
+          echo "GENGA_TEST_S3_ENDPOINT=http://localhost:${{ job.services.minio.ports['9000'] }}" >> "$GITHUB_ENV"
+          echo "GENGA_TEST_S3_ACCESS_KEY=genga" >> "$GITHUB_ENV"
+          echo "GENGA_TEST_S3_SECRET_KEY=genga-minio-test" >> "$GITHUB_ENV"
       - if: matrix.react-router == '8'
         run: pnpm test
       - run: pnpm test:pack --react-router=${{ matrix.react-router }}

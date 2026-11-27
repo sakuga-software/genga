@@ -27,6 +27,15 @@ pnpm build
 pnpm test:pack   # packs genga, installs the tarball in a copy of the example, builds and serves it
 ```
 
+The tests of the S3 adapter run against MinIO when `GENGA_TEST_S3_ENDPOINT` is set (CI sets it):
+
+```sh
+docker run -d --name genga-minio -p 59000:9000 \
+  -e MINIO_ROOT_USER=genga -e MINIO_ROOT_PASSWORD=genga-minio-test bitnamilegacy/minio:2025.7.23-debian-12-r5
+GENGA_TEST_S3_ENDPOINT=http://localhost:59000 GENGA_TEST_S3_ACCESS_KEY=genga \
+  GENGA_TEST_S3_SECRET_KEY=genga-minio-test pnpm test
+```
+
 The tests create and empty the `genga_test` and `genga_server_test` databases. To use another server, set
 `GENGA_TEST_ADMIN_URL` (a database that can create databases) and `GENGA_TEST_DATABASE_URL`.
 `pnpm test:pack` also runs the migrations if `DATABASE_URL` is set. It uses the React Router 8 of the

@@ -193,11 +193,54 @@ export default ({ text, slug, richText, blocks, defineBlock }) => ({
 
 The server checks the result with the same rules as JSON.
 
+## S3 storage
+
+`GENGA_S3_BUCKET` puts the media files in an S3-compatible bucket (AWS S3, Scaleway Object
+Storage, MinIO) instead of `GENGA_MEDIA_DIR`.
+
+| Variable                     | Default                        | Purpose                                                                                 |
+| ---------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| `GENGA_S3_BUCKET`            | (none: local directory)        | The bucket.                                                                             |
+| `GENGA_S3_ACCESS_KEY_ID`     | `AWS_ACCESS_KEY_ID`            | The access key.                                                                         |
+| `GENGA_S3_SECRET_ACCESS_KEY` | `AWS_SECRET_ACCESS_KEY`        | The secret key. Give it as a secret of your platform, never in the image.               |
+| `GENGA_S3_SESSION_TOKEN`     | `AWS_SESSION_TOKEN`            | For temporary credentials.                                                              |
+| `GENGA_S3_REGION`            | `AWS_REGION`, else `us-east-1` | The region, for example `fr-par` on Scaleway.                                           |
+| `GENGA_S3_ENDPOINT`          | AWS                            | The origin of another provider, for example `https://s3.fr-par.scw.cloud`.              |
+| `GENGA_S3_FORCE_PATH_STYLE`  | `true` with an endpoint        | Path-style URLs (`<endpoint>/<bucket>/<key>`). `false` for virtual-hosted URLs.         |
+| `GENGA_S3_PREFIX`            | (none)                         | A key prefix, for example `genga`, to share a bucket.                                   |
+| `GENGA_S3_DELIVERY`          | `proxy`                        | `proxy`, `public` or `signed`: see below.                                               |
+| `GENGA_S3_PUBLIC_URL`        | (none)                         | With `public`: the URL that serves the prefix, for example `https://media.example.com`. |
+| `GENGA_S3_SIGNED_URL_TTL`    | `3600`                         | With `signed`: seconds that a presigned URL stays valid (60 to 604800).                 |
+
+How browsers get the files:
+
+- **`proxy`** (default). The bucket stays private. Genga streams each file at `/media/<key>`, with
+  the same headers as the local directory. Every image goes through the server.
+- **`public`**. Media URLs point to `GENGA_S3_PUBLIC_URL`: a public bucket, or a CDN in front of
+  it. Genga serves no byte. Make the prefix readable by anyone. The files keep their
+  `Content-Type`, a one-year immutable `Cache-Control`, and `Content-Disposition: attachment`
+  for PDF files. The bucket cannot send `X-Content-Type-Options` or the sandbox CSP of
+  `/media/*`: serve it from another domain than the admin, as a bucket or a CDN does.
+- **`signed`**. The bucket stays private. `/media/<key>` checks the key against the database,
+  then redirects (302) to a presigned URL. The redirect is cached for 5 minutes at most, well
+  under the signature lifetime. The JSON of the API keeps the stable `/media/<key>` URL.
+
+Genga reads the keys from `GENGA_S3_*` when `GENGA_S3_ACCESS_KEY_ID` is set, else from the three
+`AWS_*` variables, never a mix of both. It reads them once at start: temporary credentials are not
+renewed. Set `GENGA_S3_REGION` for a provider other than MinIO (for example `fr-par`): the
+signature includes the region.
+
+The access key needs `s3:PutObject`, `s3:GetObject` and `s3:DeleteObject` on the prefix. Files
+that are already in the local directory do not move by themselves: copy them to the bucket
+(`<prefix>/<key>`, without the two-letter directory of the local layout) before you switch.
+
 ## Operations
 
-- **One replica.** The published cache, the rate limits and the media volume are local to
-  the process. Do not scale the service above one container.
-- **Backups.** Back up the database (`pg_dump`) and the `/data` volume together.
+- **Replicas.** With the local media directory, run one container: the volume is local to it.
+  With [S3 storage](#s3-storage), several containers share the files. Each container keeps its
+  own published cache and rate limits: after a publish, the other containers can serve the old
+  content for up to 5 minutes, and a client can make the rate limit once per container.
+- **Backups.** Back up the database (`pg_dump`) and the `/data` volume (or the bucket) together.
 - **Upgrades.** Pull the new tag and restart. The migrations are expand-only and run at
   start under an advisory lock.
 - **Health.** `/healthz` checks the process and the database. `/readyz` also checks that the

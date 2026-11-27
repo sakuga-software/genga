@@ -150,7 +150,7 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `siteUrl`             | required                          | Public origin. Setup links, sitemap. Its origin can always write.                                     |
 | `allowedOrigins`      | `[]`                              | More origins that can send writes.                                                                    |
 | `mediaDir`            | `./data/media`                    | Directory of the local storage adapter.                                                               |
-| `storage`             | local adapter                     | A `StorageAdapter`.                                                                                   |
+| `storage`             | local adapter                     | A `StorageAdapter`: `localStorageAdapter(dir)` or `s3StorageAdapter(options)`, see below.             |
 | `adminEmail`          | `null`                            | Email of the first admin, shown in the setup form.                                                    |
 | `secureCookies`       | `NODE_ENV === 'production'`       | `__Host-genga` cookie with `Secure`.                                                                  |
 | `trustedProxies`      | `GENGA_TRUSTED_PROXIES`, else 1   | Proxies in front of the app that append to `X-Forwarded-For`.                                         |
@@ -166,6 +166,44 @@ reloads modules. See `examples/react-router/app/.server/genga.ts`.
 | `mcp.allowedOrigins`  | the allowed origins               | Browser origins that can call the MCP endpoint. A request without `Origin` passes.                    |
 | `webhooks`            | `GENGA_WEBHOOKS`                  | `[{ url, secret, events? }]`: receivers of the signed [publish webhooks](./events.md).                |
 | `webhookDelivery`     | `{}`                              | `{ fetch, pollMs, timeoutMs }` of the webhook sender.                                                 |
+
+## S3 storage
+
+```ts
+import { createGenga, s3StorageAdapter } from 'genga/server';
+
+const genga = createGenga(config, {
+  // …
+  storage: s3StorageAdapter({
+    bucket: 'my-media',
+    region: 'fr-par',
+    endpoint: 'https://s3.fr-par.scw.cloud', // leave out for AWS
+    accessKeyId: process.env.S3_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+    prefix: 'genga',
+    delivery: 'proxy', // or 'public' with publicUrl, or 'signed'
+  }),
+});
+```
+
+| Option               | Default                 | Purpose                                                        |
+| -------------------- | ----------------------- | -------------------------------------------------------------- |
+| `bucket`             | required                | The bucket.                                                    |
+| `accessKeyId`        | required                | The access key.                                                |
+| `secretAccessKey`    | required                | The secret key.                                                |
+| `sessionToken`       | none                    | For temporary credentials.                                     |
+| `region`             | `us-east-1`             | The region.                                                    |
+| `endpoint`           | AWS                     | The origin of another provider (Scaleway, MinIO).              |
+| `forcePathStyle`     | `true` with an endpoint | Path-style URLs.                                               |
+| `prefix`             | none                    | A key prefix.                                                  |
+| `delivery`           | `proxy`                 | `proxy`, `public` or `signed`.                                 |
+| `publicUrl`          | none                    | With `public`: the URL of the files. Media URLs start with it. |
+| `signedUrlExpiresIn` | `3600`                  | With `signed`: seconds that a presigned URL stays valid.       |
+| `timeoutMs`          | `30000`                 | Time for one request to the bucket. Genga does not retry.      |
+
+The three deliveries, the rights of the key and the move from a local directory are in
+[the headless server guide](./headless-server.md#s3-storage). Requests are signed with
+AWS Signature Version 4 (`aws4fetch`).
 
 ## One handler: `genga.handle`
 
