@@ -246,7 +246,11 @@ export function createAdmin({ ctx, auth, documents, media, users, tokens, oauth 
       const checked = await checkAuthorization(request);
       if (!checked.ok) return checked.page;
       const form = await readForm(request, AUTH_FORM_BYTES);
-      const allow = form.get('decision') === 'allow';
+      const decision = form.get('decision');
+      if (decision !== 'allow' && decision !== 'deny') {
+        return consentData(user, checked.value, checked.query, 'Choisissez « Autoriser » ou « Refuser ».');
+      }
+      const allow = decision === 'allow';
       const scopes = form.getAll('scope').filter(isApiScope);
       let location: string;
       try {

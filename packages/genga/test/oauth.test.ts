@@ -357,6 +357,28 @@ describe('OAuth for the MCP server', () => {
       expect(await oauth().listGrants(editor)).toEqual([]);
     });
 
+    it('shows the consent screen again for an answer that is neither allow nor deny', async () => {
+      const editor = await createUser(genga, 'editor');
+      const provider = new MemoryProvider();
+      await auth(provider, { serverUrl: MCP_URL, fetchFn });
+      const url = provider.authorizationUrl as URL;
+      const cookie = await sessionOf(editor);
+      const answers: Record<string, string>[] = [{ scope: 'read' }, { decision: 'maybe', scope: 'read' }];
+      for (const answer of answers) {
+        const page = await genga.admin.oauthAuthorizeAction(
+          request(`${url.pathname}${url.search}`, {
+            method: 'POST',
+            cookie,
+            headers: { origin: SITE, 'content-type': 'application/x-www-form-urlencoded' },
+            body: form(answer),
+          }),
+        );
+        expect(page.valid).toBe(true);
+        expect(page.valid && page.error).toBe('Choisissez « Autoriser » ou « Refuser ».');
+      }
+      expect(await oauth().listGrants(editor)).toEqual([]);
+    });
+
     it('grants only the scopes that the person keeps', async () => {
       const editor = await createUser(genga, 'editor');
       const provider = await connect(editor, new MemoryProvider(), ['read']);
