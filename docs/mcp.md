@@ -232,8 +232,9 @@ publish only when a human asks.
   browser request must come from an allowed origin: by default the site origin and
   `allowedOrigins`. `Origin: null` is refused. This protects a local server from DNS
   rebinding, as the MCP specification asks. The endpoint sends no CORS headers, so a web page
-  on another origin cannot read its answers. On the headless server, React Router also
-  refuses a POST whose `Origin` is not the origin of the server.
+  on another origin cannot read its answers. On the headless server, `GENGA_ALLOWED_ORIGINS`
+  sets these origins, and the server sends the MCP path to Genga before React Router, so this
+  check is the only origin check of the endpoint.
 - **Audit.** Each write adds an entry to `genga_audit` with `via: "mcp"` and the token id in
   `detail`: `document.create`, `document.update`, `document.publish`, `document.unpublish`,
   `document.restore`, `media.upload` and `media.update`. Token creation and revocation add

@@ -76,6 +76,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   drawer and was cut, at all widths. The button is now below the note field (GNG-8).
 - For a preview on another origin, « Ouvrir l’aperçu dans un nouvel onglet » gets a new preview
   token at the click. Before, the tab could open with an expired token and answer 401 (GNG-20).
+- Server image: a POST to the MCP path with an `Origin` header of another origin got the `400`
+  of React Router before the origin check of MCP. The server now sends the MCP path to
+  `genga.handle` first: an origin of `GENGA_ALLOWED_ORIGINS` passes, another one gets `403`.
 
 ## [0.2.0] - 2026-11-24
 

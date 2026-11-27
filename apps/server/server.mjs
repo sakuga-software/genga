@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequestListener } from '@react-router/node';
+import { serveMcp } from './mcp-listener.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const clientDir = path.join(root, 'build/client');
@@ -81,6 +82,18 @@ const server = http.createServer(async (req, res) => {
     if (await serveStatic(req, res)) return;
   } catch (error) {
     console.error('[genga] Static file error:', error);
+  }
+  try {
+    if (await serveMcp(req, res, await globalThis.__gengaServer)) return;
+  } catch (error) {
+    console.error('[genga] MCP error:', error);
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Internal error.');
+    return;
   }
   handle(req, res);
 });

@@ -36,7 +36,7 @@ RUN rm -rf packages/genga/node_modules apps/server/node_modules \
   && pnpm --filter genga-server deploy --prod /out \
   && mkdir -p /out/node_modules/genga \
   && cp -r packages/genga/package.json packages/genga/bin packages/genga/migrations /out/node_modules/genga/ \
-  && cp -r apps/server/build apps/server/server.mjs /out/
+  && cp -r apps/server/build apps/server/server.mjs apps/server/mcp-listener.mjs /out/
 
 FROM ${ALPINE_IMAGE}
 ARG VERSION=dev
@@ -54,7 +54,7 @@ RUN apk add --no-cache libstdc++ tini \
   && mkdir -p /data/media /config \
   && chown -R genga:genga /data
 WORKDIR /app
-COPY --from=deploy --chown=root:root /out/package.json /out/server.mjs ./
+COPY --from=deploy --chown=root:root /out/package.json /out/server.mjs /out/mcp-listener.mjs ./
 COPY --from=deploy --chown=root:root /out/node_modules ./node_modules
 COPY --from=deploy --chown=root:root /out/build ./build
 ENV NODE_ENV=production \
