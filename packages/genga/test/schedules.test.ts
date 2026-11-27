@@ -4,36 +4,36 @@ import type { PublicUser } from '../src/types';
 import { TEST_URL } from './global-setup';
 import { createUser, SITE, testConfig, useGenga } from './helpers';
 
-const ctx = useGenga();
-const HOUR = 3_600_000;
-
-async function draftDocument(user: PublicUser, title = 'Programmé') {
-  const { id } = await ctx.genga.documents.create(user, 'journal', { title });
-  return id;
-}
-
-/** Moves the schedule of a document into the past, as if its date had come. */
-async function makeDue(id: string, action: 'publish' | 'unpublish') {
-  await ctx.genga.sql`
-    UPDATE genga_schedules SET run_at = now() - interval '1 second' WHERE document_id = ${id} AND action = ${action}
-  `;
-}
-
-async function auditActions(id: string) {
-  const rows = await ctx.genga.sql<{ action: string; user_id: string | null; detail: Record<string, unknown> }[]>`
-    SELECT action, user_id, detail FROM genga_audit WHERE document_id = ${id} ORDER BY id
-  `;
-  return rows;
-}
-
-async function eventTypes(id: string) {
-  const rows = await ctx.genga.sql<{ type: string }[]>`
-    SELECT type FROM genga_events WHERE event->>'documentId' = ${id} ORDER BY seq
-  `;
-  return rows.map((row) => row.type);
-}
-
 describe('scheduled publish and unpublish', () => {
+  const ctx = useGenga();
+  const HOUR = 3_600_000;
+
+  async function draftDocument(user: PublicUser, title = 'Programmé') {
+    const { id } = await ctx.genga.documents.create(user, 'journal', { title });
+    return id;
+  }
+
+  /** Moves the schedule of a document into the past, as if its date had come. */
+  async function makeDue(id: string, action: 'publish' | 'unpublish') {
+    await ctx.genga.sql`
+      UPDATE genga_schedules SET run_at = now() - interval '1 second' WHERE document_id = ${id} AND action = ${action}
+    `;
+  }
+
+  async function auditActions(id: string) {
+    const rows = await ctx.genga.sql<{ action: string; user_id: string | null; detail: Record<string, unknown> }[]>`
+      SELECT action, user_id, detail FROM genga_audit WHERE document_id = ${id} ORDER BY id
+    `;
+    return rows;
+  }
+
+  async function eventTypes(id: string) {
+    const rows = await ctx.genga.sql<{ type: string }[]>`
+      SELECT type FROM genga_events WHERE event->>'documentId' = ${id} ORDER BY seq
+    `;
+    return rows.map((row) => row.type);
+  }
+
   it('saves, reads and clears the dates of a schedule', async () => {
     const editor = await createUser(ctx.genga, 'editor');
     const id = await draftDocument(editor);
