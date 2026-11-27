@@ -197,7 +197,7 @@ describe('MCP endpoint of the headless server', () => {
     const mcp = new Client({ name: 'genga-e2e-oauth', version: '1.0.0' });
     await mcp.connect(new StreamableHTTPClientTransport(new URL(`${baseUrl}/agents`), { authProvider: provider }));
     try {
-      expect((await mcp.listTools()).tools.length).toBe(13);
+      expect((await mcp.listTools()).tools.length).toBe(14);
     } finally {
       await mcp.close();
     }
