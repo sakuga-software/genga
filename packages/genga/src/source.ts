@@ -87,8 +87,6 @@ export const SOURCE_PREVIEW_HEADERS = {
   'X-Robots-Tag': 'noindex',
 } as const;
 
-const etags = new WeakMap<object, string>();
-
 /** FNV-1a, 32 bits. It runs on edge runtimes, where `node:crypto` is missing. */
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -105,11 +103,7 @@ function fnv1a(text: string): string {
  */
 export function documentEtag(doc: { versionId: string | null; data: unknown }): string | undefined {
   if (!doc.versionId) return undefined;
-  const cached = typeof doc.data === 'object' && doc.data !== null ? etags.get(doc.data) : undefined;
-  if (cached) return cached;
-  const etag = `"${doc.versionId}.${fnv1a(JSON.stringify(doc.data))}"`;
-  if (typeof doc.data === 'object' && doc.data !== null) etags.set(doc.data, etag);
-  return etag;
+  return `"${doc.versionId}.${fnv1a(JSON.stringify(doc.data))}"`;
 }
 
 export function publishedHeaders(etag?: string): Headers {
