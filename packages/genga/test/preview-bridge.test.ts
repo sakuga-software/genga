@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connectBridge, connectPreview, isTrustedMessage, previewToken, readPreviewParams } from '../src/preview';
 
+type FakeMeta = {
+  attributes: Map<string, string>;
+  setAttribute: (name: string, value: string) => void;
+  hasAttribute: (name: string) => boolean;
+  remove: () => void;
+};
+
 const ADMIN = 'https://cms.example.com';
 const DOC = '6f1c2a5e-3b1d-4c55-9f0e-2a7d8c9b0e11';
 
@@ -49,18 +56,50 @@ function fakeFrame(url: string) {
     removeEventListener: (type: string) => listeners.delete(type),
   };
   vi.stubGlobal('window', win);
-  vi.stubGlobal('document', {
+  const metas: FakeMeta[] = [];
+  const createMeta = (): FakeMeta => {
+    const tag: FakeMeta = {
+      attributes: new Map(),
+      setAttribute: (name, value) => tag.attributes.set(name, value),
+      hasAttribute: (name) => tag.attributes.has(name),
+      remove: () => metas.splice(metas.indexOf(tag), 1),
+    };
+    return tag;
+  };
+  const doc = {
+    title: 'Loaded title',
     getElementById: () => null,
-    createElement: () => ({}),
-    head: { append: () => {} },
+    createElement: (name: string) => (name === 'meta' ? createMeta() : {}),
+    head: {
+      append: (node: FakeMeta) => {
+        if (node.attributes) metas.push(node);
+      },
+      querySelector: (selector: string) => {
+        if (selector === 'title') return null;
+        const key = /\[name="([^"]+)"\]/.exec(selector)?.[1];
+        return (
+          metas.find((tag) => tag.attributes.get('name') === key || tag.attributes.get('property') === key) ?? null
+        );
+      },
+    },
     addEventListener: () => {},
     removeEventListener: () => {},
     querySelectorAll: () => [],
     querySelector: () => null,
-  });
+  };
+  vi.stubGlobal('document', doc);
+  vi.stubGlobal('CSS', { escape: (value: string) => value });
   return {
     parent,
     listeners,
+    doc,
+    metas: () =>
+      Object.fromEntries(
+        metas.map((tag) => [
+          tag.attributes.get('name') ?? tag.attributes.get('property'),
+          tag.attributes.get('content'),
+        ]),
+      ),
     send: (origin: string, data: unknown, source: unknown = parent) =>
       listeners.get('message')?.({ origin, source, data }),
   };
@@ -83,6 +122,49 @@ describe('connectBridge', () => {
 
     disconnect();
     expect(frame.listeners.has('message')).toBe(false);
+  });
+
+  it('writes the title and the meta tags of each draft from the admin', () => {
+    const frame = fakeFrame('https://site.example/blog/a');
+    connectBridge({
+      documentId: DOC,
+      adminOrigin: ADMIN,
+      onDraft: () => {},
+      head: (data) => ({
+        title: `${data.title as string} | Site`,
+        meta: { description: data.excerpt as string, 'og:title': data.title as string, robots: undefined },
+      }),
+    });
+
+    frame.send('https://evil.example', { type: 'genga:draft', documentId: DOC, data: { title: 'Evil', excerpt: 'x' } });
+    expect(frame.doc.title).toBe('Loaded title');
+
+    frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { title: 'First', excerpt: 'Short' } });
+    expect(frame.doc.title).toBe('First | Site');
+    expect(frame.metas()).toEqual({ description: 'Short', 'og:title': 'First' });
+
+    frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { title: 'Second', excerpt: '' } });
+    expect(frame.doc.title).toBe('Second | Site');
+    expect(frame.metas()).toEqual({ 'og:title': 'Second' });
+  });
+
+  it('empties a meta tag of the framework and keeps it', () => {
+    const frame = fakeFrame('https://site.example/blog/a');
+    const owned = frame.doc.createElement('meta') as FakeMeta;
+    owned.setAttribute('name', 'description');
+    owned.setAttribute('content', 'Loaded');
+    frame.doc.head.append(owned);
+    connectBridge({
+      documentId: DOC,
+      adminOrigin: ADMIN,
+      onDraft: () => {},
+      head: (data) => ({ meta: { description: data.excerpt as string } }),
+    });
+
+    frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { excerpt: 'Live' } });
+    expect(frame.metas()).toEqual({ description: 'Live' });
+    frame.send(ADMIN, { type: 'genga:draft', documentId: DOC, data: { excerpt: '' } });
+    expect(frame.metas()).toEqual({ description: '' });
   });
 
   it('refuses an admin origin that is not an origin', () => {
@@ -117,6 +199,22 @@ describe('connectPreview', () => {
     answer(new Response(JSON.stringify({ document: { data: { title: 'stale' } } })));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(onDraft.mock.calls.map(([data]) => data.title)).toEqual(['live']);
+    connection.disconnect();
+  });
+
+  it('writes the head of the first draft from the API', async () => {
+    const frame = fakeFrame(`https://site.example/blog/a?genga-preview=${DOC}&genga-token=abc.def`);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ document: { data: { title: 'From the API' } } }))),
+    );
+    const connection = connectPreview({
+      adminOrigin: ADMIN,
+      onDraft: () => {},
+      head: (data) => ({ title: data.title as string }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(frame.doc.title).toBe('From the API');
     connection.disconnect();
   });
 });
