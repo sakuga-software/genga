@@ -38,6 +38,9 @@ All notable changes to the `genga` package. The format follows
   keeps it in memory (`connection.token()`, `previewToken(id)`). The editor renews the token
   with the `genga:token` message, and sends `genga:saved` after each autosave (`onSaved` in
   `connectPreview` and `usePreviewData`).
+- Editor: blocks move by drag and drop, with a handle on each block. With the keyboard, Enter on
+  the handle starts the move, Tab chooses the target block and Enter drops; a screen reader hears
+  each step in French. The Monter and Descendre buttons stay (GNG-22).
 
 ### Changed
 
