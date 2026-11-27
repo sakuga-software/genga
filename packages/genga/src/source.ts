@@ -87,6 +87,33 @@ export const SOURCE_PREVIEW_HEADERS = {
   'X-Robots-Tag': 'noindex',
 } as const;
 
+function fnv1a32(text: string, offsetBasis: number): string {
+  let hash = offsetBasis;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36).padStart(7, '0');
+}
+
+/**
+ * Two FNV-1a hashes of 32 bits with different offset bases, 64 bits in all, so that a collision
+ * stays out of reach. It runs on edge runtimes, where `node:crypto` is missing, and it is
+ * synchronous, which Web Crypto is not.
+ */
+function contentHash(text: string): string {
+  return fnv1a32(text, 0x811c9dc5) + fnv1a32(text, 0x050c5d1f);
+}
+
+/**
+ * The ETag of a published document, quoted. The version id alone is not enough: the data embeds
+ * the published targets of its relation fields, which change without a new version.
+ */
+export function documentEtag(doc: { versionId: string | null; data: unknown }): string | undefined {
+  if (!doc.versionId) return undefined;
+  return `"${doc.versionId}.${contentHash(JSON.stringify(doc.data))}"`;
+}
+
 export function publishedHeaders(etag?: string): Headers {
   const headers = new Headers(PUBLISHED_HEADERS);
   if (etag) headers.set('ETag', etag);

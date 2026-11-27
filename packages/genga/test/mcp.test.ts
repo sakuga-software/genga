@@ -134,6 +134,7 @@ describe('MCP server', () => {
           'get_document',
           'list_collections',
           'list_documents',
+          'list_relation_targets',
           'list_media',
           'list_versions',
           'preview_url',
@@ -175,6 +176,7 @@ describe('MCP server', () => {
     it.each([
       ['list_collections', 'read', {}],
       ['list_documents', 'read', { collection: 'journal' }],
+      ['list_relation_targets', 'read', { collection: 'journal' }],
       ['get_document', 'read', { id: '00000000-0000-4000-8000-000000000000' }],
       ['list_versions', 'read', { id: '00000000-0000-4000-8000-000000000000' }],
       ['list_media', 'read', {}],

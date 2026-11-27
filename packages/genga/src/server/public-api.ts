@@ -94,7 +94,13 @@ export function createPublicReads({ ctx, published }: Pick<Services, 'ctx' | 'pu
       path: collection.path(doc.slug),
       versionId: doc.versionId,
       publishedAt: doc.publishedAt,
-      data: toPublicData<T>(collection.fields, doc.data as Record<string, unknown>, blocks, ctx.siteUrl),
+      data: toPublicData<T>(
+        collection.fields,
+        doc.data as Record<string, unknown>,
+        blocks,
+        ctx.siteUrl,
+        config.collections,
+      ),
     };
   }
 

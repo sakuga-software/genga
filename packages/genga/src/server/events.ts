@@ -66,6 +66,8 @@ export function documentEvent(
     previousSlug?: string | null;
     versionId?: string | null;
     at: string;
+    /** The collections whose documents embed this document through a relation field. */
+    referencing?: string[];
   },
 ): GengaEvent {
   const previousSlug = input.previousSlug && input.previousSlug !== input.slug ? input.previousSlug : null;
@@ -79,7 +81,10 @@ export function documentEvent(
     path: input.path(input.slug),
     previous: previousSlug ? { slug: previousSlug, path: input.path(previousSlug) } : null,
     versionId: input.versionId ?? null,
-    tags: documentEventTags(input.collection, input.slug, previousSlug),
+    tags: [
+      ...documentEventTags(input.collection, input.slug, previousSlug),
+      ...(input.referencing ?? []).filter((name) => name !== input.collection).map((name) => `${ALL_TAG}:c:${name}`),
+    ],
   };
 }
 

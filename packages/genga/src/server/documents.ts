@@ -1,7 +1,7 @@
 import { can, isOwnOnly, type DocumentAction } from '../access';
 import { RESERVED_SLUGS, type CollectionConfig } from '../config';
 import { defaultValues, SLUG_PATTERN, tolerantRead, validate } from '../fields/schema';
-import { collectMediaIds } from '../populate';
+import { collectMediaIds, collectRelationIds } from '../populate';
 import { slugify } from '../slugify';
 import { isUuid } from '../uuid';
 import type { AdminDocument, DocumentStatus, DocumentSummary, PublicUser, VersionSummary } from '../types';
@@ -11,6 +11,7 @@ import { badRequest, forbidden, GengaError, isUniqueViolation, notFound } from '
 import { loadMediaMap } from './media';
 import { documentEvent } from './events';
 import { previewTarget } from './preview';
+import { invalidatePublished, referencingCollections, relatedRecord } from './relations';
 
 type DocumentRow = {
   id: string;
@@ -164,7 +165,10 @@ export function createDocuments(ctx: GengaContext) {
     assertCan(user, 'read', row);
     const collection = collectionOf(row.collection);
     const draft = tolerantRead(collection.fields, row.draft, ctx.blocks);
-    const media = await loadMediaMap(ctx, collection.fields, draft);
+    const [media, related] = await Promise.all([
+      loadMediaMap(ctx, collection.fields, draft),
+      relatedRecord(ctx, collection.fields, draft),
+    ]);
     return {
       ...summarize(row),
       draft,
@@ -173,6 +177,7 @@ export function createDocuments(ctx: GengaContext) {
       previewPath: collection.path(row.slug),
       preview: previewTarget(ctx, row.collection, row),
       media: Object.fromEntries(media),
+      related,
       canPublish: can(user, 'publish', collection.access, { createdBy: row.created_by }),
       canDelete: can(user, 'delete', collection.access, { createdBy: row.created_by }),
     };
@@ -327,6 +332,26 @@ export function createDocuments(ctx: GengaContext) {
         }
       }
 
+      // No lock on the targets: two documents that point to each other would deadlock at publish.
+      // A target deleted after this check resolves to nothing on the site.
+      const relationRefs = collectRelationIds(collection.fields, checked.data, ctx.blocks);
+      if (relationRefs.length) {
+        const found = await tx<{ id: string; collection: string }[]>`
+          SELECT id, collection FROM genga_documents
+          WHERE id = ANY(${[...new Set(relationRefs.map((ref) => ref.id))]}::uuid[]) AND deleted_at IS NULL
+        `;
+        const present = new Set(found.map((target) => `${target.collection}\u0000${target.id}`));
+        const missing = relationRefs.filter((ref) => !present.has(`${ref.collection}\u0000${ref.id}`));
+        if (missing.length) {
+          throw new GengaError(
+            422,
+            'missing_relation',
+            'Un document lié a été supprimé ou n’existe pas dans sa collection. Remplacez-le avant de publier.',
+            { documentIds: missing.map((ref) => ref.id) },
+          );
+        }
+      }
+
       if (slug !== row.slug) {
         try {
           await tx`UPDATE genga_documents SET slug = ${slug} WHERE id = ${id}`;
@@ -366,6 +391,7 @@ export function createDocuments(ctx: GengaContext) {
         previousSlug,
         versionId: version.id,
         at: new Date().toISOString(),
+        referencing: referencingCollections(ctx, row.collection),
       };
       const events = [documentEvent('document.published', eventInput)];
       if (previousSlug) events.push(documentEvent('document.slug_changed', eventInput));
@@ -381,7 +407,7 @@ export function createDocuments(ctx: GengaContext) {
       };
     });
     const { events, ...published } = result;
-    ctx.cache.invalidate(published.collection);
+    invalidatePublished(ctx, published.collection);
     try {
       await audit(ctx, user.id, 'document.publish', {
         collection: published.collection,
@@ -420,13 +446,14 @@ export function createDocuments(ctx: GengaContext) {
               slug: row.slug,
               path: collectionOf(row.collection).path,
               at: new Date().toISOString(),
+              referencing: referencingCollections(ctx, row.collection),
             }),
           ]
         : [];
       await ctx.events.record(tx, events);
       return { row, events };
     });
-    ctx.cache.invalidate(row.collection);
+    invalidatePublished(ctx, row.collection);
     try {
       await audit(ctx, user.id, remove ? 'document.delete' : 'document.unpublish', {
         collection: row.collection,

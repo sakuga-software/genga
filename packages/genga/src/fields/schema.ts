@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isSafeUrl, richTextDocSchema } from '../rich-text';
-import type { Field, Fields } from './types';
+import type { Field, Fields, RelationField } from './types';
 import { UUID_PATTERN } from '../uuid';
 
 /**
@@ -38,6 +38,8 @@ export function defaultValue(field: Field): unknown {
     case 'media':
     case 'richText':
       return null;
+    case 'relation':
+      return field.multiple ? [] : null;
     case 'tags':
     case 'array':
     case 'blocks':
@@ -105,6 +107,14 @@ function baseSchema(field: Field, mode: SchemaMode, blocks: BlockSchemas): z.Zod
       const id = z.string().regex(UUID_PATTERN);
       return mode === 'publish' && field.required ? id : id.nullable();
     }
+    case 'relation': {
+      const id = z.string().regex(UUID_PATTERN);
+      if (mode === 'read') return relationReadSchema(field);
+      if (!field.multiple) return mode === 'publish' && field.required ? id : id.nullable();
+      let list = z.array(id).max(field.maxItems ?? 100);
+      if (mode === 'publish' && field.required) list = list.min(1, 'Choisissez au moins un document.');
+      return list.refine((ids) => new Set(ids).size === ids.length, 'Un document est choisi deux fois.');
+    }
     case 'richText':
       return mode === 'publish' && field.required ? richTextDocSchema : richTextDocSchema.nullable();
     case 'tags': {
@@ -123,6 +133,18 @@ function baseSchema(field: Field, mode: SchemaMode, blocks: BlockSchemas): z.Zod
     case 'group':
       return objectSchema(field.fields, mode, blocks);
   }
+}
+
+/**
+ * Reads a stored relation after a change of the config: a single id becomes a list and back, a list
+ * longer than `maxItems` is cut, and bad or repeated ids go out. The other links stay.
+ */
+function relationReadSchema(field: RelationField): z.ZodType {
+  return z.unknown().transform((value) => {
+    const values = Array.isArray(value) ? value : [value];
+    const ids = [...new Set(values.filter((id): id is string => typeof id === 'string' && UUID_PATTERN.test(id)))];
+    return field.multiple ? ids.slice(0, field.maxItems ?? 100) : (ids[0] ?? null);
+  });
 }
 
 function blocksSchema(allowed: string[] | undefined, mode: SchemaMode, blocks: BlockSchemas): z.ZodType {

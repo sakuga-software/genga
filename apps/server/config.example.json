@@ -14,6 +14,7 @@
         "cover": { "type": "media", "label": "Image de couverture", "accept": "image" },
         "publishedDate": { "type": "date", "label": "Date de publication", "required": true },
         "tags": { "type": "tags", "label": "Étiquettes" },
+        "related": { "type": "relation", "label": "Articles liés", "to": "posts", "multiple": true, "maxItems": 3 },
         "body": { "type": "blocks", "label": "Contenu" }
       }
     },

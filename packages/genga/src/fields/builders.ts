@@ -7,6 +7,7 @@ import type {
   GroupField,
   MediaField,
   NumberField,
+  RelationField,
   RichTextField,
   SelectField,
   SlugField,
@@ -30,6 +31,10 @@ export const media = (options: Options<MediaField> = {}): MediaField => ({ type:
 export const richText = (options: Options<RichTextField> = {}): RichTextField => ({ type: 'richText', ...options });
 export const tags = (options: Options<TagsField> = {}): TagsField => ({ type: 'tags', ...options });
 export const blocks = (options: Options<BlocksField> = {}): BlocksField => ({ type: 'blocks', ...options });
+
+export function relation<const O extends Options<RelationField>>(options: O): RelationField & O {
+  return { type: 'relation', ...options };
+}
 
 export function array<const S extends Fields>(
   options: Options<ArrayField> & { fields: S },

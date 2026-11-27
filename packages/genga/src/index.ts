@@ -34,7 +34,7 @@ export {
   type RichTextMark,
   type RichTextNode,
 } from './rich-text';
-export { collectMediaIds, populate } from './populate';
+export { collectMediaIds, collectRelationIds, populate, type RelationResolver } from './populate';
 export { richTextToHtml } from './rich-text-html';
 export { toPublicData, toPublicMedia, type PublicRichText } from './public-data';
 export { slugify } from './slugify';

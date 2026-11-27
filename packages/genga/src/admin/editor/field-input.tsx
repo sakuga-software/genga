@@ -21,6 +21,7 @@ import { isSafeUrl } from '../../rich-text';
 import { BlocksInput } from './blocks-input';
 import { pathKey, useEditor } from './editor-context';
 import { MediaInput } from './media-input';
+import { RelationInput } from './relation-input';
 import { RichTextInput } from './rich-text-input';
 
 export type FieldInputProps = {
@@ -336,6 +337,16 @@ export function FieldInput(props: FieldInputProps) {
       return <SelectInput {...props} />;
     case 'tags':
       return <TagsInput {...props} field={field} />;
+    case 'relation':
+      return (
+        <RelationInput
+          label={labelOf(props.name, field)}
+          field={field}
+          value={props.value}
+          onChange={props.onChange}
+          path={props.path}
+        />
+      );
     case 'media':
       return (
         <MediaInput

@@ -23,6 +23,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `proxy`, `public` or `signed` delivery. The server image reads `GENGA_S3_*`. With S3, several
   server replicas share the files. `StorageAdapter` gains the optional `publicBaseUrl` and
   `signedUrl`, and `put` an optional `contentDisposition`.
+- `relation` field: a link to one document (`relation({ to })`) or a list (`multiple`,
+  `maxItems`). The editor searches the target collection in an accessible combobox. `populate`,
+  the public API, `genga/remote` and the preview give the published version of each target, with
+  its media; its own relations stay `{ id, collection }`. Publish refuses a deleted target. A
+  change to a target clears the cache and carries the tags of the collections that point to it.
+  The MCP tools describe the value format. The `ETag` of a published document now includes a hash
+  of its data.
 - `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
   public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
   answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer

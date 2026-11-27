@@ -8,6 +8,7 @@ import {
   type GengaSource,
   type PreviewInput,
   type PublicDocument,
+  documentEtag,
 } from '../source';
 import { isUuid } from '../uuid';
 import type { GengaAuth } from './auth';
@@ -66,7 +67,7 @@ export function createEmbeddedSource({ ctx, auth, published, reads }: Services):
       if (!hasCollection(collection)) return { kind: 'not-found', cache: { tags }, headers: publishedHeaders() };
       const found = await reads.bySlug<T>(collection, slug);
       if (found && 'document' in found) {
-        const etag = found.document.versionId ? `"${found.document.versionId}"` : undefined;
+        const etag = documentEtag(found.document);
         return {
           kind: 'document',
           doc: found.document,

@@ -14,6 +14,7 @@ import type { GengaContext } from './context';
 import type { GengaDocuments } from './documents';
 import { GengaError } from './errors';
 import type { GengaMedia } from './media';
+import { relationOptions } from './relations';
 import { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, type RemoteFetchOptions } from './remote-fetch';
 
 export type McpOptions = {
@@ -56,6 +57,9 @@ const VALUE_FORMATS: Record<Field['type'], string> = {
   date: 'string "YYYY-MM-DD"',
   url: 'string: http, https, mailto, tel or a relative path',
   media: 'media id (uuid) from list_media or upload_media, or null',
+  relation:
+    'document id (uuid) of the collection in "to", from list_relation_targets, or null. With "multiple": an array of ids. ' +
+    'The site shows only the published targets.',
   richText:
     'TipTap JSON: {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Hello","marks":[{"type":"bold"}]}]}]}. ' +
     'Nodes: paragraph, heading (attrs.level 2 to 4), bulletList, orderedList, listItem, blockquote, hardBreak, horizontalRule, codeBlock. ' +
@@ -88,6 +92,11 @@ function decodeCursor(cursor: string | undefined): number {
     // Falls through to the error below.
   }
   throw new GengaError(400, 'bad_request', 'The cursor is not valid. Use the nextCursor of the previous page.');
+}
+
+function describeType(field: Field): string {
+  if (field.type !== 'relation') return field.type;
+  return `relation to "${field.to}"${field.multiple ? ', multiple' : ''}`;
 }
 
 /** A message that tells an agent what went wrong and what to do next. */
@@ -287,6 +296,32 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
               ? `${collections.length} collection(s): ${collections.map((c) => `${c.name} (${c.label})`).join(', ')}.`
               : 'You cannot read any collection.',
           };
+        }),
+    );
+
+    server.registerTool(
+      'list_relation_targets',
+      {
+        title: 'List relation targets',
+        description:
+          'Lists the documents that a relation field can point to: the documents that you can read, and every published document of the collection. Use the "to" collection of the field. Only published targets show on the site.',
+        inputSchema: {
+          collection: z.string().describe('The "to" collection of the relation field'),
+          search: z.string().max(200).optional().describe('Text in the title or the slug'),
+        },
+        annotations: { readOnlyHint: true },
+      },
+      (args) =>
+        run('read', async () => {
+          if (!Object.hasOwn(ctx.config.collections, args.collection)) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              `Unknown collection: ${args.collection}. Call list_collections.`,
+            );
+          }
+          const options = await relationOptions(ctx, user, args.collection, { search: args.search ?? '' });
+          const targets = options.map(({ id, title, status }) => ({ id, title, status }));
+          return { data: { targets }, text: `${targets.length} document(s).` };
         }),
     );
 
@@ -647,7 +682,7 @@ export function createMcp({ ctx, documents, media, tokens }: Services, options: 
         const schema = collectionSchema(name);
         const fieldLines = Object.entries(schema.fields).map(
           ([field, definition]) =>
-            `- ${field} (${definition.type}${definition.required ? ', required to publish' : ''}): ${VALUE_FORMATS[definition.type]}`,
+            `- ${field} (${describeType(definition)}${definition.required ? ', required to publish' : ''}): ${VALUE_FORMATS[definition.type]}`,
         );
         const blockLines = schema.blocks.map(
           (block) =>

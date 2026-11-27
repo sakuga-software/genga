@@ -6,6 +6,8 @@ import type { PublishedDocument } from '../types';
 import type { GengaAuth } from './auth';
 import type { GengaContext } from './context';
 import { loadMediaMap } from './media';
+import { collectRelationIds, type RelationResolver } from '../populate';
+import { loadRelatedDocuments, loadRelationResolver, resolverOf } from './relations';
 
 type PublishedRow = {
   id: string;
@@ -17,7 +19,7 @@ type PublishedRow = {
 };
 
 import { PREVIEW_PARAM } from '../preview/bridge';
-import { SOURCE_PREVIEW_HEADERS } from '../source';
+import { documentEtag, SOURCE_PREVIEW_HEADERS } from '../source';
 
 export { PREVIEW_PARAM };
 
@@ -35,7 +37,7 @@ function previewHeaders() {
 
 function publicHeaders(etag?: string) {
   const headers = new Headers({ 'Cache-Control': 'public, max-age=0, must-revalidate' });
-  if (etag) headers.set('ETag', `"${etag}"`);
+  if (etag) headers.set('ETag', etag);
   return headers;
 }
 
@@ -70,17 +72,21 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
     row: PublishedRow,
     versionId: string | null,
     raw: unknown,
+    preloaded?: RelationResolver,
   ): Promise<PublishedDocument<T>> {
     const collection = ctx.config.collections[row.collection];
     const data = tolerantRead(collection.fields, raw, ctx.blocks);
-    const media = await loadMediaMap(ctx, collection.fields, data);
+    const [media, resolve] = await Promise.all([
+      loadMediaMap(ctx, collection.fields, data),
+      preloaded ?? loadRelationResolver(ctx, collection.fields, data),
+    ]);
     return {
       id: row.id,
       collection: row.collection,
       slug: row.slug,
       versionId,
       publishedAt: row.published_at?.toISOString() ?? null,
-      data: populate<T>(collection.fields, data, ctx.blocks, media),
+      data: populate<T>(collection.fields, data, ctx.blocks, media, resolve),
     };
   }
 
@@ -111,7 +117,12 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
         FROM genga_documents d JOIN genga_versions v ON v.id = d.published_version_id
         WHERE d.collection = ${collection} AND d.deleted_at IS NULL
       `;
-      const docs = await Promise.all(rows.map((row) => toDocument<T>(row, row.version_id, row.data)));
+      // One query loads the relation targets of the whole list.
+      const refs = rows.flatMap((row) =>
+        collectRelationIds(config.fields, tolerantRead(config.fields, row.data, ctx.blocks), ctx.blocks),
+      );
+      const resolve = resolverOf(await loadRelatedDocuments(ctx, refs));
+      const docs = await Promise.all(rows.map((row) => toDocument<T>(row, row.version_id, row.data, resolve)));
       return docs.sort((a, b) => compareNewestFirst(a, b, config.sortField, config.titleField));
     });
     return options.limit ? all.slice(0, options.limit) : all;
@@ -180,7 +191,7 @@ export function createPublished(ctx: GengaContext, auth: GengaAuth) {
       return { kind: 'document', doc: await toDocument<T>(row, null, row.draft), preview: true, headers };
     }
     const doc = await find<T>(collection, slug);
-    if (doc) return { kind: 'document', doc, preview: false, headers: publicHeaders(doc.versionId ?? undefined) };
+    if (doc) return { kind: 'document', doc, preview: false, headers: publicHeaders(documentEtag(doc)) };
     const location = await redirectFor(collection, slug);
     if (location) return { kind: 'redirect', location, headers: publicHeaders() };
     return { kind: 'not-found', headers: publicHeaders() };

@@ -1,11 +1,13 @@
 import type { BlockSchemas } from './fields/schema';
-import type { Field, Fields, MediaObject } from './fields/types';
+import type { Field, Fields, MediaField, MediaObject, RelationField } from './fields/types';
 
-type Visitor = (field: Field, value: unknown) => unknown;
+/** Called for each media field and each relation field. The other leaf fields keep their value. */
+type Visitor = (field: MediaField | RelationField, value: unknown) => unknown;
 
 function mapValue(field: Field, value: unknown, blocks: BlockSchemas, visit: Visitor): unknown {
   switch (field.type) {
     case 'media':
+    case 'relation':
       return visit(field, value);
     case 'group':
       return mapFields(field.fields, value, blocks, visit);
@@ -35,24 +37,60 @@ function mapFields(fields: Fields, data: unknown, blocks: BlockSchemas, visit: V
 
 export function collectMediaIds(fields: Fields, data: unknown, blocks: BlockSchemas): string[] {
   const ids = new Set<string>();
-  mapFields(fields, data, blocks, (_field, value) => {
-    if (typeof value === 'string' && value) ids.add(value);
+  mapFields(fields, data, blocks, (field, value) => {
+    if (field.type === 'media' && typeof value === 'string' && value) ids.add(value);
     return value;
   });
   return [...ids];
 }
 
+function relationIds(field: RelationField, value: unknown): string[] {
+  if (!field.multiple) return typeof value === 'string' && value !== '' ? [value] : [];
+  const values = Array.isArray(value) ? value : [];
+  return values.filter((id): id is string => typeof id === 'string' && id !== '');
+}
+
+/** The document ids of the relation fields, with the collection that each field points to. */
+export function collectRelationIds(
+  fields: Fields,
+  data: unknown,
+  blocks: BlockSchemas,
+): { id: string; collection: string }[] {
+  const found = new Map<string, { id: string; collection: string }>();
+  mapFields(fields, data, blocks, (field, value) => {
+    if (field.type !== 'relation') return value;
+    for (const id of relationIds(field, value)) found.set(`${field.to}\u0000${id}`, { id, collection: field.to });
+    return value;
+  });
+  return [...found.values()];
+}
+
+/**
+ * Gives the value of one relation target, or null when the target does not resolve. The default
+ * gives a `RelationRef` and reads nothing.
+ */
+export type RelationResolver = (field: RelationField, id: string) => unknown;
+
+const refOnly: RelationResolver = (field, id) => ({ id, collection: field.to });
+
 /**
  * Replaces each media id with its media object. A missing row gives `null`:
  * a restored version can point to media that a user deleted later.
+ * Each relation id goes through `resolve`. A single relation that does not resolve gives `null`;
+ * a multiple relation leaves it out.
  */
 export function populate<T = Record<string, unknown>>(
   fields: Fields,
   data: Record<string, unknown>,
   blocks: BlockSchemas,
   media: ReadonlyMap<string, MediaObject>,
+  resolve: RelationResolver = refOnly,
 ): T {
-  return mapFields(fields, data, blocks, (_field, value) =>
-    typeof value === 'string' ? (media.get(value) ?? null) : null,
-  ) as T;
+  return mapFields(fields, data, blocks, (field, value) => {
+    if (field.type === 'media') return typeof value === 'string' ? (media.get(value) ?? null) : null;
+    const resolved = relationIds(field, value)
+      .map((id) => resolve(field, id))
+      .filter((item) => item !== null && item !== undefined);
+    return field.multiple ? resolved : (resolved[0] ?? null);
+  }) as T;
 }

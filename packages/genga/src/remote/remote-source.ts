@@ -12,6 +12,7 @@ import {
   type PreviewInput,
   type PublicDocument,
   type SitemapEntry,
+  documentEtag,
 } from '../source';
 
 /** What a read is for. An adapter uses it to add framework cache hints, for example Next `next.tags`. */
@@ -145,7 +146,7 @@ export function createRemoteSource(options: RemoteSourceOptions): GengaSource {
       const tags = tagsFor(collection, slug);
       const found = await bySlug<T>(collection, slug);
       if (found && 'document' in found) {
-        const etag = found.document.versionId ? `"${found.document.versionId}"` : undefined;
+        const etag = documentEtag(found.document);
         return {
           kind: 'document',
           doc: found.document,

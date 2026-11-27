@@ -61,6 +61,24 @@ export function defineConfig(config: GengaConfig): GengaConfig {
     if (types.has(block.type)) throw new Error(`Genga: the block type "${block.type}" is defined twice.`);
     types.add(block.type);
   }
+  const checkRelations = (fields: Fields, where: string) => {
+    for (const [name, field] of Object.entries(fields)) {
+      if (field.type === 'relation' && !Object.hasOwn(config.collections, field.to)) {
+        throw new Error(
+          `Genga: the relation field "${name}" of ${where} points to an unknown collection "${field.to}".`,
+        );
+      }
+      const { maxItems } = field.type === 'relation' ? field : { maxItems: undefined };
+      if (maxItems !== undefined && !(Number.isInteger(maxItems) && maxItems > 0)) {
+        throw new Error(`Genga: the relation field "${name}" of ${where} needs a maxItems of 1 or more.`);
+      }
+      if (field.type === 'group' || field.type === 'array') checkRelations(field.fields, where);
+    }
+  };
+  for (const [name, collection] of Object.entries(config.collections)) {
+    checkRelations(collection.fields, `the collection "${name}"`);
+  }
+  for (const block of config.blocks) checkRelations(block.fields as Fields, `the block "${block.type}"`);
   return config;
 }
 
