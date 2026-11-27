@@ -1,13 +1,24 @@
 # Changelog
 
-All notable changes to the `genga` package. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
+All notable changes to the `genga` and `@genga-cms/next` packages, which share one version.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
 ### Added
 
+- New package `@genga-cms/next`, for the Next.js 16.4+ App Router in remote mode (GNG-4).
+  `createRemoteSource` caches published reads in the Data Cache with the Genga cache tags (one
+  hour at most). `loadPage` gives the published page, a redirect or not found, and the draft in
+  Draft Mode, and keeps public pages static. `webhookRoute` checks the signed webhooks and
+  revalidates their tags. `previewRoute` is the preview entry route: it checks the preview
+  token with the server, turns Draft Mode on and keeps the token in an `HttpOnly` cookie,
+  `Partitioned` in production so that the preview works in an admin on another site (Safari).
+  `GengaPreviewBridge` in the root layout connects the preview pages to the editor. `Blocks`
+  and `defineBlockComponents` render the blocks: Client Component blocks follow each keystroke
+  in the preview, Server Component blocks refresh after each autosave. `usePreviewData` and
+  `RichText`. See `packages/next/README.md` and `examples/next`.
 - `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
   public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
   answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer

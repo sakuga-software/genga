@@ -489,6 +489,24 @@ and `draftMode()`, `revalidateTag(tag, profile)`, and `proxy.ts` in place of `mi
   `<GengaPreview />` (a client component) calls `router.refresh()` on `genga:saved`.
 - **CSP.** If `proxy.ts` sets a nonce CSP, its `matcher` must exclude `/admin` and `/media`.
 
+**The first release (GNG-4, remote mode only) differs from this section:**
+
+- The entry route needs no `path`: it redirects to the path of the draft that the Genga server returns, or to
+  `path` when it is a path of the site. It checks `path` after URL parsing, which removes dot segments.
+- The preview cookies live one hour, not the life of a token. After a token expires, `loadPage` gives the
+  published document, and `<GengaPreviewBridge>` in the root layout stays connected, so the next `genga:token` of
+  the editor gives the draft again. A cookie with the life of a token disconnects the page for good.
+- `<GengaPreviewBridge source={genga} />` in the layout connects every preview page. `<GengaPreview>` stays for a
+  page that places the bridge itself.
+- `withGenga`, `gengaRoute` and `instrumentation.ts` serve embedded mode, and come with it.
+- Reconciliation with `GET /api/v1/events` is not in this release: a call to `revalidateTag` needs a request,
+  and Next.js has no long-running process on serverless hosts. A missed webhook expires after the safety TTL.
+- Published pages send the ISR header of Next.js (`s-maxage=<maxAge>, stale-while-revalidate`), not the header of
+  section 8.1. `revalidateTag` reaches the cache of Next.js only: a CDN in front of the site keeps its copy until
+  `s-maxage`, and several instances of the site need a shared `cacheHandler`.
+- A renamed slug answers `308` (`permanentRedirect`), not `301`.
+- The peer range is `next >=16.4.0 <17`: CI tests 16.4 only.
+
 ```ts
 // genga.ts: createGenga(config, …) behind `import 'server-only'`, one instance on globalThis
 
@@ -937,6 +955,15 @@ Risks (check in the first days of the phase that needs them):
    If the browser drops it, the fallback is a dedicated dynamic preview route
    (`app/_genga/preview/[...path]/page.tsx`) that reads the token from `searchParams`, so that public pages stay
    static.
+
+   **Result (GNG-4, Next.js 16.4.6, 2026-11-26).** In production, Next.js sets the Draft Mode cookie with
+   `SameSite=None; Secure` and without `Partitioned`; `next dev` sets `SameSite=Lax`. In a frame on another site,
+   WebKit drops this cookie, and Chromium and Firefox keep it. The preview entry route sets the same cookie again
+   with `Partitioned`: then Draft Mode works in Chromium, Firefox and WebKit, in a frame on the same site and on
+   another site, for static and dynamic pages. The fallback route is not necessary. WebKit on Linux (GNOME Web)
+   blocks every cookie of a frame on another site, `Partitioned` included: there, only the same-site setup gives a
+   preview. Not tested: Safari itself, and Chromium when the user blocks third-party cookies.
+
 2. **Admin CSP.** Confirm that HeroUI, React Aria and TipTap work with `style-src 'self'` and
    `style-src-attr 'unsafe-inline'`.
 3. **h3 `toWebRequest`.** h3 marks it as not stable. Test multipart uploads and streamed MCP responses through it.
