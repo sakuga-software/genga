@@ -161,9 +161,11 @@ async function inviteAdmin() {
 }
 
 let status = 1;
+let stage = 'the reset of the database';
 let proxy;
 try {
   await resetDatabase();
+  stage = 'the start of the servers';
   start('genga', 'node', [path.join(root, 'apps/server/server.mjs')], path.join(root, 'apps/server'), {
     NODE_ENV: 'production',
     PORT: String(gengaPort),
@@ -186,8 +188,11 @@ try {
     GENGA_WEBHOOK_SECRET: webhookSecret,
   });
   proxy = startHttpsProxy(mediaDir);
+  stage = 'the readiness of the Genga server and the site';
   await Promise.all([waitFor(`${gengaUrl}/readyz`), waitFor(`${siteDirect}/`)]);
+  stage = 'the setup link';
   const setupUrl = await inviteAdmin();
+  stage = 'Playwright';
   const args = ['exec', 'playwright', 'test', ...process.argv.slice(2)];
   const playwright = spawn('pnpm', args, {
     cwd: example,
@@ -197,12 +202,12 @@ try {
   status = await new Promise((resolve) => {
     playwright.on('exit', (code) => resolve(code ?? 1));
     playwright.on('error', (error) => {
-      console.error(error);
+      console.error('[e2e] Playwright did not start:', error);
       resolve(1);
     });
   });
 } catch (error) {
-  console.error(error);
+  console.error(`[e2e] The run failed at ${stage}:`, error);
 } finally {
   proxy?.close();
   for (const child of children) {
