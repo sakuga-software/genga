@@ -148,11 +148,6 @@ export function createApiTokens(ctx: GengaContext) {
   }
 
   /**
-   * Reads `Authorization: Bearer gga_…`. Returns null when the header is missing or the token
-   * is not valid: unknown, revoked, expired, or of a disabled user. Throws a 429 after too many
-   * bad tokens from one address.
-   */
-  /**
    * Counts a bad token of the request, and returns null. Throws a 429 after too many bad tokens
    * from one address. A valid token always passes: the limit applies to bad tokens only, so that
    * bad tokens from a shared address (a NAT, a proxy, an unknown address) cannot lock out other clients.
@@ -169,6 +164,11 @@ export function createApiTokens(ctx: GengaContext) {
     return null;
   }
 
+  /**
+   * Reads `Authorization: Bearer gga_…`. Returns null when the header is missing or the token
+   * is not valid: unknown, revoked, expired, or of a disabled user. Throws a 429 after too many
+   * bad tokens from one address.
+   */
   async function authenticate(request: Request): Promise<TokenAuth | null> {
     const token = bearerToken(request);
     if (token === null) return null;
