@@ -14,6 +14,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
@@ -23,6 +24,13 @@ const root = path.resolve(example, '../..');
 const databaseUrl = process.env.E2E_DATABASE_URL;
 if (!databaseUrl) {
   console.error('Set E2E_DATABASE_URL to a test database: the run deletes all its content.');
+  process.exit(1);
+}
+const databaseName = decodeURIComponent(new URL(databaseUrl).pathname.slice(1));
+if (!/_(e2e|test)$/.test(databaseName)) {
+  console.error(
+    `The database of E2E_DATABASE_URL must end in _e2e or _test, not "${databaseName}": the run deletes all its content.`,
+  );
   process.exit(1);
 }
 
@@ -105,16 +113,13 @@ function start(name, command, args, cwd, env) {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
   });
-  // The Genga server logs a one-time setup link: keep it out of the CI logs.
-  const prefix = (chunk) =>
-    chunk
-      .toString()
-      .split('\n')
-      .filter((line) => line && !line.includes('setup?token='))
-      .map((line) => `[${name}] ${line}`)
-      .join('\n');
-  child.stdout.on('data', (chunk) => console.log(prefix(chunk)));
-  child.stderr.on('data', (chunk) => console.error(prefix(chunk)));
+  // The Genga server logs a one-time setup link: keep it out of the CI logs. The filter reads whole lines.
+  const forward = (stream, write) =>
+    createInterface({ input: stream, crlfDelay: Infinity }).on('line', (line) => {
+      if (line && !line.includes('setup?token=')) write(`[${name}] ${line}`);
+    });
+  forward(child.stdout, console.log);
+  forward(child.stderr, console.error);
   child.on('exit', (code) => {
     if (code !== null && code !== 0) console.error(`[${name}] exited with ${code}`);
   });

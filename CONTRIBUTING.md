@@ -41,7 +41,7 @@ The tests create and empty the `genga_test` and `genga_server_test` databases. T
 `GENGA_TEST_ADMIN_URL` (a database that can create databases) and `GENGA_TEST_DATABASE_URL`.
 `pnpm test:pack` also runs the migrations if `DATABASE_URL` is set. It uses the React Router 8 of the
 example. `pnpm test:pack --react-router=7` installs React Router 7 and TypeScript 6 in the copy. CI runs both.
-`pnpm test:e2e` deletes all content of the database of `E2E_DATABASE_URL` (for example `genga_e2e`), and needs
+`pnpm test:e2e` deletes all content of the database of `E2E_DATABASE_URL` (its name ends in `_e2e` or `_test`, for example `genga_e2e`), and needs
 `pnpm build` and two browsers of Playwright (`pnpm --filter genga-example-next exec playwright install chromium webkit`).
 
 ## The headless server
