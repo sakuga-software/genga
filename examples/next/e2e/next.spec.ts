@@ -144,7 +144,7 @@ test('the editor preview follows each keystroke, and refreshes after the autosav
   // The metadata comes from the server: it changes after the autosave and `router.refresh()`.
   await expect.poll(() => frame.locator('title').textContent(), { timeout: 15_000 }).toBe('Typed in the editor');
 
-  await admin.getByRole('button', { name: /Hero/ }).first().click();
+  await admin.getByRole('button', { name: /Hero/, expanded: false }).first().click();
   const heroTitle = admin.getByRole('textbox', { name: 'Title' }).nth(1);
   await heroTitle.fill('Live hero');
   // The hero block is a Client Component: it follows the draft at once.
