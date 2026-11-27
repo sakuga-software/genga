@@ -25,22 +25,25 @@ export function LiveBlock({ component: BlockComponent, block }: LiveBlockProps) 
 
 type BoundaryProps = { type: string; preview: boolean; children: ReactNode };
 
+type BoundaryState = { failed: boolean; children: ReactNode };
+
 /** Keeps the page up when one block fails. In a preview it shows a notice in place of the block. */
-export class BlockBoundary extends Component<BoundaryProps, { failed: boolean }> {
-  state = { failed: false };
+export class BlockBoundary extends Component<BoundaryProps, BoundaryState> {
+  state: BoundaryState = { failed: false, children: this.props.children };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error(`[genga] The block "${this.props.type}" failed to render.`, error, info.componentStack);
+  /** In a preview, the boundary renders new children again after a failure. The editor sends new field values at each change. */
+  static getDerivedStateFromProps(props: BoundaryProps, state: BoundaryState): Partial<BoundaryState> | null {
+    if (props.children === state.children) return null;
+    if (state.failed && !props.preview) return null;
+    return { failed: false, children: props.children };
   }
 
-  componentDidUpdate(previous: BoundaryProps) {
-    if (this.state.failed && this.props.preview && previous.children !== this.props.children) {
-      this.setState({ failed: false });
-    }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(`[genga] The block "${this.props.type}" failed to render.`, error, info.componentStack);
   }
 
   render() {
