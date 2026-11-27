@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Avatar, Button, Chip, Drawer, Kbd, Toast, Tooltip } from '@heroui/react';
 import {
   ExternalLink,
@@ -19,6 +19,7 @@ import { ROLE_LABELS } from '../../access';
 import type { AppLayoutData } from '../../types';
 import { CommandPalette } from './command-palette';
 import { adminPath, setAdminPath } from '../../client/admin-path';
+import { useBrowserValue } from '../ui/use-browser-value';
 
 const AdminLayoutContext = createContext<AppLayoutData | null>(null);
 const COLLAPSED_KEY = 'genga:sidebar-collapsed';
@@ -203,18 +204,16 @@ export function AppShell({ data, children }: AppShellProps) {
   const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const storedCollapsed = useBrowserValue(readCollapsed, false);
+  const [chosenCollapsed, setChosenCollapsed] = useState<boolean | null>(null);
+  const collapsed = chosenCollapsed ?? storedCollapsed;
   const path = location.pathname.replace(/\/+$/, '') || adminPath();
   const groups = navGroups(data);
 
-  useEffect(() => setCollapsed(readCollapsed()), []);
-
-  function toggleCollapsed() {
-    setCollapsed((value) => {
-      storeCollapsed(!value);
-      return !value;
-    });
-  }
+  const toggleCollapsed = useCallback(() => {
+    storeCollapsed(!collapsed);
+    setChosenCollapsed(!collapsed);
+  }, [collapsed]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -231,7 +230,7 @@ export function AppShell({ data, children }: AppShellProps) {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [toggleCollapsed]);
 
   const isCurrent = (href: string) => (href === adminPath() ? path === adminPath() : path.startsWith(href));
 

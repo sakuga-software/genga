@@ -4,21 +4,24 @@ import type { BlockData } from '../fields/types';
 
 type BoundaryProps = { type: string; preview: boolean; children: ReactNode };
 
-class BlockBoundary extends Component<BoundaryProps, { failed: boolean }> {
-  state = { failed: false };
+type BoundaryState = { failed: boolean; children: ReactNode };
+
+class BlockBoundary extends Component<BoundaryProps, BoundaryState> {
+  state: BoundaryState = { failed: false, children: this.props.children };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error(`[genga] The block "${this.props.type}" failed to render.`, error, info.componentStack);
+  /** In the preview, the boundary renders new children again after a failure. The editor sends new field values at each change. */
+  static getDerivedStateFromProps(props: BoundaryProps, state: BoundaryState): Partial<BoundaryState> | null {
+    if (props.children === state.children) return null;
+    if (state.failed && !props.preview) return null;
+    return { failed: false, children: props.children };
   }
 
-  componentDidUpdate(previous: BoundaryProps) {
-    if (this.state.failed && previous.children !== this.props.children && this.props.preview) {
-      this.setState({ failed: false });
-    }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error(`[genga] The block "${this.props.type}" failed to render.`, error, info.componentStack);
   }
 
   render() {
