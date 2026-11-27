@@ -14,6 +14,7 @@ import {
   type WebhookConfig,
   type WebhookDeliveryOptions,
 } from './events';
+import { createScheduler, type SchedulerOptions } from './schedules';
 import { createMcp, type McpOptions } from './mcp';
 import { createMedia } from './media';
 import { runMigrations } from '../../migrations/migrate.mjs';
@@ -84,6 +85,12 @@ export type GengaOptions = {
   webhooks?: WebhookConfig[];
   /** Options of the webhook sender. */
   webhookDelivery?: WebhookDeliveryOptions;
+  /**
+   * The runner of scheduled publish and unpublish, on a timer after `ready()`. With several
+   * replicas, one runs it at a time. `false` turns the timer off: call `genga.runSchedules()`
+   * from a cron job instead.
+   */
+  scheduler?: false | SchedulerOptions;
   /**
    * The MCP endpoint. Off in `genga.handle` by default: an object turns it on at `path`
    * (default `/mcp`). The deprecated `genga.mcp` handler reads the same options.
@@ -185,6 +192,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
   const source = createEmbeddedSource({ ctx, auth, published, reads });
   const api = createApi(services);
   const mcp = createMcp(services, mcpOptions ?? {});
+  const scheduler = createScheduler(ctx, documents, options.scheduler || {}, options.maxConnections ?? 10);
 
   let ready: Promise<void> | null = null;
   function whenReady(): Promise<void> {
@@ -192,6 +200,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
       await runMigrations(sql);
       await auth.ensureSetupToken();
       events.start();
+      if (options.scheduler !== false) scheduler.start();
     })().catch((error) => {
       ready = null;
       throw error;
@@ -266,7 +275,10 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     allowOrigin(origin: string) {
       if (!ctx.allowedOrigins.includes(origin)) ctx.allowedOrigins.push(origin);
     },
+    /** Runs the due scheduled publish and unpublish now. Returns how many ran. */
+    runSchedules: () => scheduler.run(),
     async close() {
+      await scheduler.stop();
       await events.stop();
       await sql.end({ timeout: 5 });
     },
@@ -311,5 +323,6 @@ export { ADMIN_HEADERS } from './api';
 export { API_TOKEN_PREFIX, type TokenAuth } from './api-tokens';
 export { withAuditSource, type AuditSource } from './auth';
 export type { McpOptions } from './mcp';
+export type { SchedulerOptions } from './schedules';
 export { DEFAULT_ALLOWED_PORTS, fetchRemoteFile, isPublicAddress, type RemoteFetchOptions } from './remote-fetch';
 export { MEDIA_KEY_PATTERN, ALLOWED_MIME } from './media';

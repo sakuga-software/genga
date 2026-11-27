@@ -168,4 +168,23 @@ CREATE INDEX genga_webhook_deliveries_due_idx ON genga_webhook_deliveries (next_
   WHERE delivered_at IS NULL AND failed_at IS NULL;
 `,
   },
+  {
+    // Scheduled publish and unpublish. One row per document and action. The runner deletes the row
+    // in the transaction that publishes, so a row runs once even with several replicas.
+    id: '0005_schedules',
+    sql: `
+CREATE TABLE genga_schedules (
+  document_id uuid NOT NULL REFERENCES genga_documents (id) ON DELETE CASCADE,
+  action text NOT NULL CHECK (action IN ('publish', 'unpublish')),
+  run_at timestamptz NOT NULL,
+  created_by uuid REFERENCES genga_users (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  failed_at timestamptz,
+  last_error text,
+  attempts integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (document_id, action)
+);
+CREATE INDEX genga_schedules_due_idx ON genga_schedules (run_at) WHERE failed_at IS NULL;
+`,
+  },
 ];

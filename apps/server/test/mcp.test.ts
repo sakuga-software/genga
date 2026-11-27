@@ -61,6 +61,7 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   genga = createGenga(config, {
     databaseUrl: TEST_URL,
+    scheduler: false,
     siteUrl: baseUrl,
     siteLink: 'https://www.example.com',
     mediaDir,
@@ -142,6 +143,7 @@ describe('MCP endpoint of the headless server', () => {
   it('is off when the mcp option is false', async () => {
     const off = createGenga(config, {
       databaseUrl: TEST_URL,
+      scheduler: false,
       siteUrl: baseUrl,
       mediaDir,
       mcp: false,

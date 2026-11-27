@@ -80,6 +80,10 @@ export function createApi({ ctx, auth, documents, media, users, tokens }: Servic
         return json(await documents.publish(user, id, revision(body.draftRev)));
       }
       if (id && sub === 'unpublish' && method === 'POST') return json(await documents.unpublish(user, id));
+      if (id && sub === 'schedule' && method === 'PUT') {
+        const body = await readJson(request);
+        return json(await documents.schedule(user, id, { publishAt: body.publishAt, unpublishAt: body.unpublishAt }));
+      }
       if (id && sub === 'preview' && method === 'GET') {
         const doc = await documents.get(user, id);
         return json({ preview: doc.preview });

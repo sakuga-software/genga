@@ -58,7 +58,20 @@ export type AdminDocument = DocumentSummary & {
   related: Record<string, RelatedDocument>;
   canPublish: boolean;
   canDelete: boolean;
+  schedule: DocumentSchedule;
 };
+
+export type ScheduleAction = 'publish' | 'unpublish';
+
+/** A publish or unpublish that waits for its date. */
+export type ScheduledAction = {
+  at: string;
+  /** Set when the action could not run. It does not run again until somebody saves the schedule. */
+  failedAt: string | null;
+  error: string | null;
+};
+
+export type DocumentSchedule = { publish: ScheduledAction | null; unpublish: ScheduledAction | null };
 
 export type VersionSummary = {
   id: string;
