@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Button, Tooltip } from '@heroui/react';
 import { ExternalLink, Monitor, RotateCw, Smartphone } from 'lucide-react';
 import { isTrustedMessage, PREVIEW_TOKEN_PARAM } from '../../preview/bridge';
@@ -89,6 +89,19 @@ export function PreviewPane({
 
   const tabHref = freshToken?.src === src ? withToken(src, freshToken.token) : src;
 
+  async function openInNewTab(event: MouseEvent<HTMLAnchorElement>) {
+    const plainClick = event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+    if (!plainClick || !targetOrigin || !renewToken) return;
+    event.preventDefault();
+    // Open the tab before the token request. A browser blocks a tab that a script opens after an await.
+    const tab = window.open('', '_blank');
+    if (!tab) return;
+    tab.opener = null;
+    const token = await renewToken().catch(() => null);
+    if (token) setFreshToken({ src, token });
+    tab.location.href = token ? withToken(src, token) : tabHref;
+  }
+
   async function reload() {
     setReady(false);
     setFreshToken(null);
@@ -151,6 +164,7 @@ export function PreviewPane({
             href={tabHref}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(event) => void openInNewTab(event)}
             className="inline-flex size-8 items-center justify-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface-tertiary)] hover:text-[var(--foreground)]"
             aria-label="Ouvrir l’aperçu dans un nouvel onglet"
           >

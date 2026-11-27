@@ -61,6 +61,8 @@ All notable changes to the `genga` package. The format follows
   shows the email of the account, also when the account is disabled (GNG-9).
 - In the Versions drawer, the « Enregistrer une version » button went past the edge of the
   drawer and was cut, at all widths. The button is now below the note field (GNG-8).
+- For a preview on another origin, « Ouvrir l’aperçu dans un nouvel onglet » gets a new preview
+  token at the click. Before, the tab could open with an expired token and answer 401 (GNG-20).
 
 ## [0.2.0] - 2026-11-24
 
