@@ -34,6 +34,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the `scheduler` option and `genga.runSchedules()`. One process runs the due actions at a
   time, with the normal events, webhooks and audit entries. Migration `0005_schedules`. See
   `docs/configuration.md#scheduled-publish`.
+- OAuth 2.1 sign-in for the MCP endpoint, as the MCP authorization specification 2026-07-28
+  describes it: protected resource metadata, authorization server metadata, client ID metadata
+  documents, dynamic client registration, PKCE (S256), refresh token rotation and a consent
+  page in the admin (`OAuthConsentPage`). A client signs in from its own window, with no token
+  to copy. The rights stay the scopes and the role of the user, both. The tokens page lists the
+  connected clients and disconnects them. On with the `mcp` option; `mcp.oauth: false` and
+  `GENGA_MCP_OAUTH=off` turn it off. Personal tokens (`gga_`) keep working. Migration
+  `0006_oauth`. See `docs/mcp-oauth.md`.
 - `genga.handle(request, context?)`: one Fetch handler for the admin API, the media files, the
   public API and the MCP endpoint. It returns `null` for other paths, waits for `ready()`, and
   answers `503` when the database is not reachable. `context.peerAddress` appends the TCP peer

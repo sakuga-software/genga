@@ -11,11 +11,13 @@ import type {
   FormResult,
   LoginPageData,
   MediaPageData,
+  OAuthConsentPageData,
+  PublicUser,
   SetupPageData,
   TokensPageData,
   UsersPageData,
 } from '../types';
-import type { GengaApiTokens } from './api-tokens';
+import { isApiScope, type GengaApiTokens } from './api-tokens';
 import { ADMIN_HEADERS } from './api';
 import type { GengaAuth, SessionUser } from './auth';
 import { AUTH_FORM_BYTES, readForm } from './body';
@@ -24,6 +26,8 @@ import type { GengaDocuments } from './documents';
 import { GengaError } from './errors';
 import type { GengaMedia } from './media';
 import { isUnderPath } from '../paths';
+import type { AuthorizeRequest, GengaOAuth } from './oauth';
+import { isNativeRedirect } from './oauth';
 import { isAllowedOrigin } from './origin';
 import type { GengaUsers } from './users';
 
@@ -34,6 +38,7 @@ type Services = {
   media: GengaMedia;
   users: GengaUsers;
   tokens: GengaApiTokens;
+  oauth: GengaOAuth | null;
 };
 
 const STATUSES = new Set(['all', 'draft', 'published', 'changed']);
@@ -52,7 +57,7 @@ function rethrow(error: unknown): never {
 }
 
 /** Loaders and actions of the admin routes. The app calls them from its route modules. */
-export function createAdmin({ ctx, auth, documents, media, users, tokens }: Services) {
+export function createAdmin({ ctx, auth, documents, media, users, tokens, oauth }: Services) {
   async function requireUser(request: Request): Promise<SessionUser> {
     const user = await auth.getUser(request);
     if (user) return user;
@@ -77,6 +82,66 @@ export function createAdmin({ ctx, auth, documents, media, users, tokens }: Serv
     if (!isAllowedOrigin(request, ctx.allowedOrigins)) {
       throw data({ message: 'Origine refusée.' }, { status: 403, headers: ADMIN_HEADERS });
     }
+  }
+
+  function canPublishSomewhere(user: PublicUser): boolean {
+    return Object.values(ctx.config.collections).some((collection) => can(user, 'publish', collection.access));
+  }
+
+  function requireOAuth(): GengaOAuth {
+    if (!oauth) throw data({ message: 'Introuvable.' }, { status: 404, headers: ADMIN_HEADERS });
+    return oauth;
+  }
+
+  function hostOf(value: string | null): string | null {
+    if (!value) return null;
+    try {
+      return new URL(value).host || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function redirectTarget(uri: string): string {
+    const url = new URL(uri);
+    return url.host ? `${url.protocol}//${url.host}` : url.protocol;
+  }
+
+  function consentData(
+    user: PublicUser,
+    request: AuthorizeRequest,
+    query: string,
+    error: string | null,
+  ): OAuthConsentPageData {
+    return {
+      adminPath: ctx.adminPath,
+      valid: true,
+      client: {
+        name: request.client.name,
+        metadataUrl: request.client.kind === 'metadata' ? request.client.id : null,
+        siteHost: hostOf(request.client.clientUri),
+      },
+      redirectTarget: redirectTarget(request.redirectUri),
+      nativeRedirect: isNativeRedirect(request.redirectUri),
+      scopes: request.scopes,
+      canPublish: canPublishSomewhere(user),
+      user: { name: user.name, email: user.email },
+      query,
+      error,
+    };
+  }
+
+  /** Checks the authorization request in the URL. An error gives the page that explains it. */
+  async function checkAuthorization(
+    request: Request,
+  ): Promise<{ ok: true; value: AuthorizeRequest; query: string } | { ok: false; page: OAuthConsentPageData }> {
+    const url = new URL(request.url);
+    const check = await requireOAuth().checkAuthorize(url.searchParams);
+    if (check.ok) return { ok: true, value: check.request, query: url.search.slice(1) };
+    return {
+      ok: false,
+      page: { adminPath: ctx.adminPath, valid: false, message: check.page, returnUrl: check.returnUrl },
+    };
   }
 
   return {
@@ -155,9 +220,46 @@ export function createAdmin({ ctx, auth, documents, media, users, tokens }: Serv
       return {
         tokens: await tokens.list(user),
         allTokens: isManager ? await tokens.list(user, { all: true }) : null,
+        grants: oauth ? await oauth.listGrants(user) : [],
+        allGrants: oauth && isManager ? await oauth.listGrants(user, { all: true }) : null,
+        mcpUrl: oauth?.resource ?? null,
         currentUserId: user.id,
-        canPublish: Object.values(ctx.config.collections).some((collection) => can(user, 'publish', collection.access)),
+        canPublish: canPublishSomewhere(user),
       };
+    },
+
+    /** The consent screen of an MCP client (OAuth authorization endpoint). It needs a session. */
+    async oauthAuthorizeLoader(request: Request): Promise<OAuthConsentPageData> {
+      requireOAuth();
+      // The session comes first: without it, the page reads no client and downloads no metadata document.
+      const user = await requireUser(request);
+      const checked = await checkAuthorization(request);
+      if (!checked.ok) return checked.page;
+      return consentData(user, checked.value, checked.query, null);
+    },
+
+    /** The answer of the consent screen: a redirect to the client, with a code or `access_denied`. */
+    async oauthAuthorizeAction(request: Request): Promise<OAuthConsentPageData> {
+      requireOAuth();
+      checkOrigin(request);
+      const user = await requireUser(request);
+      const checked = await checkAuthorization(request);
+      if (!checked.ok) return checked.page;
+      const form = await readForm(request, AUTH_FORM_BYTES);
+      const decision = form.get('decision');
+      if (decision !== 'allow' && decision !== 'deny') {
+        return consentData(user, checked.value, checked.query, 'Choisissez « Autoriser » ou « Refuser ».');
+      }
+      const allow = decision === 'allow';
+      const scopes = form.getAll('scope').filter(isApiScope);
+      let location: string;
+      try {
+        location = await requireOAuth().decide(user, checked.value, { allow, scopes });
+      } catch (error) {
+        if (error instanceof GengaError) return consentData(user, checked.value, checked.query, error.message);
+        throw error;
+      }
+      throw redirect(location, { headers: ADMIN_HEADERS });
     },
 
     async loginLoader(request: Request): Promise<LoginPageData> {

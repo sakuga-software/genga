@@ -22,8 +22,11 @@ export type Settings = {
   port: number;
   /** Requests per minute and per client address on the public API. */
   rateLimit: number;
-  /** The MCP endpoint: on by default at `/mcp`. `uploadPorts` is null for the default of genga. */
-  mcp: { enabled: boolean; path: string; uploadPorts: number[] | null };
+  /**
+   * The MCP endpoint: on by default at `/mcp`, with OAuth sign-in for its clients. `uploadPorts`
+   * is null for the default of genga.
+   */
+  mcp: { enabled: boolean; path: string; oauth: boolean; uploadPorts: number[] | null };
   /** The S3 bucket of the media files, or null for the directory `mediaDir`. */
   s3: S3StorageOptions | null;
 };
@@ -183,6 +186,10 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
   if (!['on', 'off', 'true', 'false', '1', '0'].includes(mcpSwitch)) {
     problems.push(`GENGA_MCP must be on or off, not "${env.GENGA_MCP}".`);
   }
+  const oauthSwitch = env.GENGA_MCP_OAUTH?.trim().toLowerCase() || 'on';
+  if (!['on', 'off', 'true', 'false', '1', '0'].includes(oauthSwitch)) {
+    problems.push(`GENGA_MCP_OAUTH must be on or off, not "${env.GENGA_MCP_OAUTH}".`);
+  }
   const mcpPath = (env.GENGA_MCP_PATH?.trim() || '/mcp').replace(/\/+$/, '');
   if (!/^\/[a-z0-9_-]+$/i.test(mcpPath)) {
     problems.push(`GENGA_MCP_PATH must be one path segment like /mcp, not "${env.GENGA_MCP_PATH}".`);
@@ -210,6 +217,7 @@ export function readSettings(env: NodeJS.ProcessEnv = process.env): Settings {
     mcp: {
       enabled: !['off', 'false', '0'].includes(mcpSwitch),
       path: mcpPath,
+      oauth: !['off', 'false', '0'].includes(oauthSwitch),
       uploadPorts: ports(env.GENGA_MCP_UPLOAD_PORTS, 'GENGA_MCP_UPLOAD_PORTS', problems),
     },
     s3: s3Settings(env, problems),

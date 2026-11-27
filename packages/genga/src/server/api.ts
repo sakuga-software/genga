@@ -9,6 +9,7 @@ import type { GengaDocuments } from './documents';
 import { badRequest, GengaError, notFound } from './errors';
 import { loadMediaMap, type GengaMedia } from './media';
 import { isAllowedOrigin } from './origin';
+import type { GengaOAuth } from './oauth';
 import { loadRelationResolver, relationOptions } from './relations';
 import type { GengaUsers } from './users';
 
@@ -45,10 +46,11 @@ type Services = {
   media: GengaMedia;
   users: GengaUsers;
   tokens: GengaApiTokens;
+  oauth: GengaOAuth | null;
 };
 
 /** Handles `<adminPath>/api/*`. Every request needs a session; every write passes the origin check. */
-export function createApi({ ctx, auth, documents, media, users, tokens }: Services) {
+export function createApi({ ctx, auth, documents, media, users, tokens, oauth }: Services) {
   async function route(request: Request, user: PublicUser, segments: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
     const [resource, id, sub] = segments;
@@ -162,6 +164,17 @@ export function createApi({ ctx, auth, documents, media, users, tokens }: Servic
       if (!id && method === 'POST') return json(await tokens.create(user, await readJson(request)), 201);
       if (id && method === 'DELETE') {
         await tokens.revoke(user, id);
+        return json({ ok: true });
+      }
+    }
+
+    if (resource === 'grants' && oauth) {
+      if (!id && method === 'GET') {
+        const all = new URL(request.url).searchParams.get('all') === '1';
+        return json({ grants: await oauth.listGrants(user, { all }) });
+      }
+      if (id && method === 'DELETE') {
+        await oauth.revokeGrant(user, id);
         return json({ ok: true });
       }
     }

@@ -151,6 +151,36 @@ export type UsersPageData = { users: PublicUser[]; currentUserId: string };
 
 export type LoginPageData = { needsSetup: boolean; next: string; adminPath: string };
 
+/** The consent screen of an OAuth authorization request. */
+export type OAuthConsentPageData = { adminPath: string } & (
+  | {
+      valid: true;
+      client: {
+        name: string;
+        /** The URL of the client metadata document, or null for a client that registered itself. */
+        metadataUrl: string | null;
+        /** The host of `client_uri`, when the client gives one. */
+        siteHost: string | null;
+      };
+      /** Where the browser goes after the answer: scheme and host, or the scheme alone. */
+      redirectTarget: string;
+      /** True when the redirect URI goes to an app on the computer (loopback or private-use scheme). */
+      nativeRedirect: boolean;
+      scopes: ApiScope[];
+      canPublish: boolean;
+      user: { name: string; email: string };
+      /** The query string of the authorization request. The form posts it back as is. */
+      query: string;
+      error: string | null;
+    }
+  | {
+      valid: false;
+      message: string;
+      /** The redirect URI of the client with the error, when the client is valid. The page shows it as a link. */
+      returnUrl: string | null;
+    }
+);
+
 export type SetupPageData = { adminPath: string } & (
   | { valid: true; kind: 'setup' | 'invite'; email: string | null; name: string; token: string }
   | { valid: false }
@@ -170,10 +200,29 @@ export type ApiTokenItem = {
   user: { id: string; email: string; name: string };
 };
 
+/** An OAuth grant as the admin lists it: one consent of a user to an MCP client. */
+export type OAuthGrantItem = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  /** The host of the client metadata document, for a client that has one. Null for a registered client. */
+  clientHost: string | null;
+  scopes: ApiScope[];
+  createdAt: string;
+  lastUsedAt: string | null;
+  user: { id: string; email: string; name: string };
+};
+
 export type TokensPageData = {
   tokens: ApiTokenItem[];
   /** The tokens of every user, for a user manager. Null for the other roles. */
   allTokens: ApiTokenItem[] | null;
+  /** The OAuth grants of the user. Empty when OAuth is off. */
+  grants: OAuthGrantItem[];
+  /** The grants of every user, for a user manager. Null for the other roles. */
+  allGrants: OAuthGrantItem[] | null;
+  /** The URL of the MCP endpoint when MCP clients can connect with OAuth. Null otherwise. */
+  mcpUrl: string | null;
   currentUserId: string;
   /** True when the role of the user can publish in at least one collection. */
   canPublish: boolean;

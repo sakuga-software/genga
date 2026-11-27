@@ -208,15 +208,23 @@ describe('settings', () => {
   });
 
   it('reads the MCP switch and path', () => {
-    expect(readSettings({ ...env, GENGA_MCP: 'off' }).mcp).toEqual({ enabled: false, path: '/mcp', uploadPorts: null });
+    expect(readSettings({ ...env, GENGA_MCP: 'off' }).mcp).toEqual({
+      enabled: false,
+      path: '/mcp',
+      oauth: true,
+      uploadPorts: null,
+    });
     expect(readSettings({ ...env, GENGA_MCP_PATH: '/agents/' }).mcp).toEqual({
       enabled: true,
       path: '/agents',
+      oauth: true,
       uploadPorts: null,
     });
+    expect(readSettings({ ...env, GENGA_MCP_OAUTH: 'off' }).mcp.oauth).toBe(false);
     expect(readSettings({ ...env, GENGA_MCP_UPLOAD_PORTS: '443, 8443' }).mcp.uploadPorts).toEqual([443, 8443]);
     for (const [values, problem] of [
       [{ GENGA_MCP: 'maybe' }, 'GENGA_MCP must be on or off'],
+      [{ GENGA_MCP_OAUTH: 'maybe' }, 'GENGA_MCP_OAUTH must be on or off'],
       [{ GENGA_MCP_PATH: '/a/b' }, 'GENGA_MCP_PATH must be one path segment'],
       [{ GENGA_MCP_PATH: '/api' }, 'GENGA_MCP_PATH cannot be /api'],
       [{ GENGA_MCP_PATH: '/admin' }, 'GENGA_MCP_PATH cannot be the admin path'],

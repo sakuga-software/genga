@@ -187,4 +187,62 @@ CREATE TABLE genga_schedules (
 CREATE INDEX genga_schedules_due_idx ON genga_schedules (run_at) WHERE failed_at IS NULL;
 `,
   },
+  {
+    // OAuth 2.1 for the MCP server. A grant is one consent of a user to a client: it is the unit
+    // that the admin lists and revokes. The database keeps the sha256 of codes, tokens and secrets only.
+    id: '0006_oauth',
+    sql: `
+CREATE TABLE genga_oauth_clients (
+  id text PRIMARY KEY,
+  kind text NOT NULL CHECK (kind IN ('registered', 'metadata')),
+  name text NOT NULL,
+  client_uri text,
+  redirect_uris text[] NOT NULL,
+  auth_method text NOT NULL CHECK (auth_method IN ('none', 'client_secret_basic', 'client_secret_post')),
+  secret_hash text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  fresh_until timestamptz,
+  last_used_at timestamptz
+);
+
+CREATE TABLE genga_oauth_grants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES genga_users (id) ON DELETE CASCADE,
+  client_id text NOT NULL REFERENCES genga_oauth_clients (id) ON DELETE CASCADE,
+  scopes text[] NOT NULL CHECK (cardinality(scopes) > 0 AND scopes <@ ARRAY['read', 'write', 'publish']::text[]),
+  resource text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+CREATE INDEX genga_oauth_grants_user_idx ON genga_oauth_grants (user_id, created_at DESC);
+
+CREATE TABLE genga_oauth_codes (
+  code_hash text PRIMARY KEY,
+  client_id text NOT NULL REFERENCES genga_oauth_clients (id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES genga_users (id) ON DELETE CASCADE,
+  redirect_uri text NOT NULL,
+  code_challenge text NOT NULL,
+  scopes text[] NOT NULL,
+  resource text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  replayed_at timestamptz,
+  grant_id uuid REFERENCES genga_oauth_grants (id) ON DELETE CASCADE
+);
+CREATE INDEX genga_oauth_codes_expires_idx ON genga_oauth_codes (expires_at);
+
+CREATE TABLE genga_oauth_tokens (
+  token_hash text PRIMARY KEY,
+  grant_id uuid NOT NULL REFERENCES genga_oauth_grants (id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('access', 'refresh')),
+  scopes text[] NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz
+);
+CREATE INDEX genga_oauth_tokens_grant_idx ON genga_oauth_tokens (grant_id);
+CREATE INDEX genga_oauth_tokens_expires_idx ON genga_oauth_tokens (expires_at);
+`,
+  },
 ];

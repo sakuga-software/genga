@@ -387,7 +387,7 @@ export function createAuth(ctx: GengaContext) {
 export type GengaAuth = ReturnType<typeof createAuth>;
 
 /** Where a write comes from, for example `{ via: 'mcp', tokenId }`. */
-export type AuditSource = { via: string; tokenId?: string };
+export type AuditSource = { via: string; tokenId?: string; grantId?: string; clientId?: string };
 
 const auditSource = new AsyncLocalStorage<AuditSource>();
 

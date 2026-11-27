@@ -21,9 +21,14 @@ type Routes = {
   media: (key: string) => Promise<Response>;
   publicApi: ((request: Request) => Promise<Response>) | null;
   mcp: { path: string; handle: (request: Request) => Promise<Response> } | null;
+  oauth: {
+    isWellKnownPath: (pathname: string) => boolean;
+    wellKnown: (request: Request, pathname: string) => Response | null;
+    endpoint: (request: Request, name: string) => Promise<Response>;
+  } | null;
 };
 
-type Route = 'admin-api' | 'media' | 'public-api' | 'mcp';
+type Route = 'admin-api' | 'media' | 'public-api' | 'mcp' | 'oauth' | 'well-known';
 
 /** Throws at start when two Genga paths overlap, because one of them would never answer. */
 export function checkPathCollisions(paths: Record<string, string | null>) {
@@ -51,6 +56,10 @@ function unavailable(route: Route): Response {
   if (route === 'admin-api') {
     return json({ error: 'unavailable', message: 'Le CMS ne joint pas sa base de données.' }, 503);
   }
+  if (route === 'oauth') {
+    const body = { error: 'temporarily_unavailable', error_description: 'The CMS cannot reach its database.' };
+    return new Response(JSON.stringify(body), { status: 503, headers });
+  }
   if (route === 'mcp') {
     const body = { jsonrpc: '2.0', error: { code: -32000, message: 'The CMS cannot reach its database.' }, id: null };
     return new Response(JSON.stringify(body), { status: 503, headers });
@@ -63,16 +72,19 @@ function unavailable(route: Route): Response {
 }
 
 /**
- * The one Fetch handler of Genga. It answers the admin API, the media files, the public API
- * and the MCP endpoint, and returns null for every other path. The admin pages stay with the
+ * The one Fetch handler of Genga. It answers the admin API, the media files, the public API,
+ * the MCP endpoint and its OAuth endpoints, and returns null for every other path. The admin pages stay with the
  * route modules of the app until the admin is a single-page app.
  */
 export function createHandler(routes: Routes): GengaHandler {
   const { ctx } = routes;
   const adminApiPath = `${ctx.adminPath}/api`;
+  const oauthPath = `${adminApiPath}/oauth`;
 
   function match(pathname: string): Route | null {
+    if (routes.oauth && isUnderPath(pathname, oauthPath)) return 'oauth';
     if (isUnderPath(pathname, adminApiPath)) return 'admin-api';
+    if (routes.oauth?.isWellKnownPath(pathname)) return 'well-known';
     if (pathname.startsWith(`${ctx.mediaPath}/`)) return 'media';
     if (routes.publicApi && isUnderPath(pathname, PUBLIC_API_PATH)) return 'public-api';
     if (routes.mcp && pathname.replace(/\/+$/, '').toLowerCase() === routes.mcp.path.toLowerCase()) return 'mcp';
@@ -83,6 +95,7 @@ export function createHandler(routes: Routes): GengaHandler {
     const { pathname } = new URL(request.url);
     const route = match(pathname);
     if (!route) return null;
+    if (route === 'well-known') return (routes.oauth as NonNullable<Routes['oauth']>).wellKnown(request, pathname);
     const forwarded = context.peerAddress ? withPeer(request, context.peerAddress) : request;
     try {
       await routes.ready();
@@ -111,6 +124,8 @@ export function createHandler(routes: Routes): GengaHandler {
         return (routes.publicApi as NonNullable<Routes['publicApi']>)(forwarded);
       case 'mcp':
         return (routes.mcp as NonNullable<Routes['mcp']>).handle(forwarded);
+      case 'oauth':
+        return (routes.oauth as NonNullable<Routes['oauth']>).endpoint(forwarded, pathname.slice(oauthPath.length + 1));
     }
   };
 }

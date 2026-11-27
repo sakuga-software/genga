@@ -8,10 +8,12 @@ export default [
   route('readyz', 'routes/readyz.ts'),
   route('api/v1/*', 'routes/api-v1.ts'),
   route('media/*', 'routes/media.ts'),
+  route('.well-known/*', 'routes/well-known.ts'),
   route(':admin/api/*', 'routes/admin/api.ts'),
   route(':admin', 'routes/admin/shell.tsx', [
     route('login', 'routes/admin/login.tsx'),
     route('setup', 'routes/admin/setup.tsx'),
+    route('oauth/authorize', 'routes/admin/oauth-authorize.tsx'),
     layout('routes/admin/app.tsx', [
       index('routes/admin/dashboard.tsx'),
       route('collections/:collection', 'routes/admin/collection.tsx'),
