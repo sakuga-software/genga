@@ -9,8 +9,9 @@ is for a React Router app that mounts those route modules.
 Nothing breaks when you update `genga`:
 
 - The route components of `genga/admin` and the `genga.admin.*` loaders and actions still work. At
-  the first call, Genga logs one warning per process: `genga.admin is deprecated and leaves at 1.0`.
-- The route module of `<adminPath>/api/*` that calls `genga.handle` stays as it is.
+  the first call, each Genga instance logs one warning: `genga.admin is deprecated and leaves at 1.0`.
+- `genga.api`, `genga.media.serve` and `genga.mcp`, which the route modules of 0.3 call for the
+  admin API, the media and MCP, still work and log the same kind of warning.
 - If your app calls `genga.handle` for every request (in a middleware), set `adminApp: false` in
   `createGenga` until you move: `genga.handle` then leaves the admin pages to your route modules.
 - `genga/admin.css` is still in the package, for the route modules.
@@ -23,8 +24,8 @@ database (`packages/genga/test/legacy-routes.test.ts`).
 
 1. **Replace the admin routes with one route.** Remove the admin route modules: `shell.tsx`,
    `login.tsx`, `setup.tsx`, `app.tsx`, `dashboard.tsx`, `collection.tsx`, `document.tsx`,
-   `media.tsx`, `users.tsx`, `tokens.tsx`, `oauth-authorize.tsx` and `api.ts`. Add one route for
-   every path under the admin path:
+   `media.tsx`, `users.tsx`, `tokens.tsx`, `oauth-authorize.tsx` and `api.ts`, and the routes of
+   the media and MCP (`routes/media.ts`, `routes/mcp.ts`). One module replaces them all:
 
    ```ts
    // app/routes.ts
@@ -59,6 +60,9 @@ database (`packages/genga/test/legacy-routes.test.ts`).
 5. **Remove `react-router` imports for Genga.** `genga/server` no longer imports `react-router`.
    If your app used the `data()` errors of `genga.admin.*` in its own code, read the plain
    `Response` that Genga now throws: a 302 with `Location`, or a JSON body `{ message }` with a status.
+
+If your code calls `genga.admin.requireUser(request)` to know the signed-in user, use
+`genga.getUser(request)`: it gives the user or null, and logs no warning.
 
 The OAuth consent page (`<adminPath>/oauth/authorize`) and the setup and invitation links are
 pages of the admin app: no route of their own.

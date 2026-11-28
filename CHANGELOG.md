@@ -25,14 +25,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   violation (`pnpm test:e2e:admin`).
 - `genga.getUser(request)`: the signed-in admin user of a request, for the site in embedded
   mode. See `docs/configuration.md#embedded-mode`.
-- A lint rule: `genga`, `genga/server`, `genga/remote` and `genga/preview` cannot import
-  `react-router`.
 
 ### Deprecated
 
 - `genga.admin.*`, the route components of `genga/admin` and `genga/admin.css`: route
   `<adminPath>/*` to `genga.handle(request)` instead. They still work and log one warning per
-  process; they leave at 1.0. See `docs/migrate-to-admin-app.md`.
+  Genga instance; they leave at 1.0. See `docs/migrate-to-admin-app.md`.
 
 ### Changed
 

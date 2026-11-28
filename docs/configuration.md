@@ -352,6 +352,9 @@ await genga.ready();
 serve({ fetch: app.fetch, port: 3000 });
 ```
 
+Without a reverse proxy in front of this server, create the instance with `trustedProxies: 0`:
+the default (1) reads the client address from `X-Forwarded-For`, which a client can then set.
+
 React Router: see [the admin app](#the-admin-app) below and `examples/react-router`. A helper
 for `node:http` and Express (`toNodeListener`), the `@genga-cms/react-router` package and the
 embedded mode of `@genga-cms/next` come in later releases.

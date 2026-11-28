@@ -80,7 +80,9 @@ describe('genga.handle', () => {
     expect(await genga.getUser(at('/'))).toBeNull();
     const user = await createUser(genga, 'editor');
     const cookie = await genga.auth.createSession(user.id, at('/'));
-    expect(await genga.getUser(at('/', { headers: { cookie: cookie.split(';')[0] } }))).toMatchObject({ id: user.id });
+    const found = await genga.getUser(at('/', { headers: { cookie: cookie.split(';')[0] } }));
+    expect(found).toMatchObject({ id: user.id });
+    expect(found).not.toHaveProperty('sessionId');
   });
 
   it('keeps the public API and MCP off by default', async () => {

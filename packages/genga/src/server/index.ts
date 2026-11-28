@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import { blockSchemas, type GengaConfig } from '../config';
+import type { PublicUser } from '../types';
 import { createAdmin, createAdminViews } from './admin';
 import { createAdminApp } from './admin-app';
 import { createApiTokens } from './api-tokens';
@@ -233,7 +234,6 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     };
   }
 
-  /** Logs one warning per process at the first call of any `genga.admin.*` loader or action. */
   function deprecatedAdmin<T extends Record<string, unknown>>(admin: T): T {
     const wrapped = {} as Record<string, unknown>;
     for (const [name, value] of Object.entries(admin)) {
@@ -289,7 +289,12 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
      */
     admin: deprecatedAdmin(createAdmin(services)),
     /** The signed-in admin user of a request, for an "Edit this page" link of the site. Null without a session. */
-    getUser: (request: Request) => auth.getUser(request),
+    async getUser(request: Request): Promise<PublicUser | null> {
+      const user = await auth.getUser(request);
+      if (!user) return null;
+      const { sessionId: _sessionId, ...publicUser } = user;
+      return publicUser;
+    },
     /**
      * The one Fetch handler: the admin API, the media files, and when they are on, the public
      * API and the MCP endpoint. It returns null for any other path, so the app answers it.

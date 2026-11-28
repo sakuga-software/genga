@@ -229,7 +229,6 @@ try {
   copyExample('next', nextApp, { genga: `file:../${tarball}`, '@genga-cms/next': `file:../${nextTarball}` });
   run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], nextApp);
   checkNextPackage(path.join(nextApp, 'node_modules/@genga-cms/next'));
-  // react-router is an optional peer of genga: a site without React Router does not install it.
   if (existsSync(path.join(nextApp, 'node_modules/react-router'))) {
     throw new Error('npm installed react-router in the Next.js example: genga must not need it.');
   }
