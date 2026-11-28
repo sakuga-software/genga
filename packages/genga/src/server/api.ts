@@ -99,8 +99,9 @@ export function createApi({ ctx, auth, documents, media, users, tokens, oauth, v
   async function consentRoute(request: Request, user: PublicUser): Promise<Response> {
     if (!views.hasOAuth) throw notFound('Introuvable.');
     const query = new URL(request.url).search.slice(1);
-    if (request.method === 'GET') return json(await views.consent(user, query));
-    if (request.method === 'POST') {
+    const method = request.method.toUpperCase();
+    if (method === 'GET') return json(await views.consent(user, query));
+    if (method === 'POST') {
       const body = await readJson(request, AUTH_FORM_BYTES);
       const scopes = Array.isArray(body.scopes) ? body.scopes : [];
       return json(await views.decide(user, query, { decision: body.decision, scopes }));

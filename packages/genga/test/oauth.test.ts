@@ -734,5 +734,36 @@ describe('OAuth for the MCP server', () => {
       const code = back.searchParams.get('code') as string;
       expect(await auth(provider, { serverUrl: MCP_URL, authorizationCode: code, fetchFn })).toBe('AUTHORIZED');
     });
+
+    it('gives an error page, never a client URL, for an invalid request, and access_denied for a refusal', async () => {
+      const editor = await createUser(genga, 'editor');
+      const cookie = (await sessionOf(editor)).split(';')[0];
+      const provider = new MemoryProvider();
+      expect(await auth(provider, { serverUrl: MCP_URL, fetchFn })).toBe('REDIRECT');
+      const url = provider.authorizationUrl as URL;
+      const answer = (target: URL, decision: string) =>
+        fetchFn(consentApi(target), {
+          method: 'POST',
+          headers: { cookie, origin: SITE, 'content-type': 'application/json' },
+          body: JSON.stringify({ decision, scopes: ['read'] }),
+        }).then((response) => response.json());
+
+      const unknown = new URL(url);
+      unknown.searchParams.set('client_id', 'unknown');
+      expect(await (await fetchFn(consentApi(unknown), { headers: { cookie } })).json()).toMatchObject({
+        valid: false,
+      });
+      expect(await answer(unknown, 'allow')).toEqual({ page: expect.objectContaining({ valid: false }) });
+
+      const plain = new URL(url);
+      plain.searchParams.set('code_challenge_method', 'plain');
+      const refused = await answer(plain, 'allow');
+      expect(refused.location).toBeUndefined();
+      expect(refused.page).toMatchObject({ valid: false });
+
+      const denied = new URL((await answer(url, 'deny')).location);
+      expect(denied.searchParams.get('error')).toBe('access_denied');
+      expect(denied.searchParams.get('state')).toBe(url.searchParams.get('state'));
+    });
   });
 });

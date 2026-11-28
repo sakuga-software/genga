@@ -298,8 +298,8 @@ passes the origin check, and every route needs a session except `session` and `s
 | `GET <adminPath>/api/consent?<query>`       | The OAuth consent screen of the authorization request in the query string |
 | `POST <adminPath>/api/consent?<query>`      | `{ decision, scopes }`: gives `{ location }` of the client, or `{ page }` |
 
-The sign-in routes keep the login limits and the body limit of the forms (16 KiB). `next` and
-`location` are always paths of the admin. The consent routes are not under `api/oauth`, because
+The sign-in routes keep the login limits and the body limit of the forms (16 KiB). Their `next`
+and `location` are always paths of the admin. The consent routes are not under `api/oauth`, because
 that path answers without the session.
 
 `genga.api(request, path)`, `genga.mcp(request)` and `genga.media.serve(key)` still work, but

@@ -154,6 +154,12 @@ Refactors in the core:
 - **R2.** Replace the React Router `data()` and `redirect()` in `server/admin.ts` with `GengaError` and plain JSON.
   Reuse the JSON routes of `server/api.ts` where they exist (documents, media, users, tokens). Add a JSON route only
   for the page data that has none today: the layout, the dashboard, and the schema of the document page.
+
+  **Change (GNG-27).** Each screen has one route, `GET <adminPath>/api/views/<screen>`, with the `*PageData` shape
+  of its old loader. The pages need fields that the resource routes do not give (`canDelete`, `currentUserId`,
+  `allTokens`, the status filter of a collection), and one route per screen keeps the old loaders and the admin app
+  on the same code. The writes still use the resource routes.
+
 - **R3.** Add the unauthenticated endpoints that the login and setup forms use today through React Router actions:
   `POST <adminPath>/api/session` (login), `GET <adminPath>/api/setup` (describe a token),
   `POST <adminPath>/api/setup` (accept it). They keep the origin check, the login limits and the body limits.
