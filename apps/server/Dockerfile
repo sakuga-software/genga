@@ -34,8 +34,9 @@ COPY --from=build /repo/packages/genga packages/genga
 COPY --from=build /repo/apps/server apps/server
 RUN rm -rf packages/genga/node_modules apps/server/node_modules \
   && pnpm --filter genga-server deploy --prod /out \
-  && mkdir -p /out/node_modules/genga \
+  && mkdir -p /out/node_modules/genga/dist \
   && cp -r packages/genga/package.json packages/genga/bin packages/genga/migrations /out/node_modules/genga/ \
+  && cp -r packages/genga/dist/admin-app /out/node_modules/genga/dist/ \
   && cp -r apps/server/build apps/server/server.mjs apps/server/mcp-listener.mjs /out/
 
 FROM ${ALPINE_IMAGE}

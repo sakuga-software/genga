@@ -274,6 +274,8 @@ function RichTextEditor({ label, required, value, onChange, path }: RichTextInpu
 
   const editor = useEditor({
     immediatelyRender: false,
+    // The admin CSP blocks a <style> element: admin.css holds these styles.
+    injectCSS: false,
     editable: !readOnly,
     content: value ?? undefined,
     extensions: [

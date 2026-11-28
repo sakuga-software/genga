@@ -1,6 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*", "bin/**/*", "migrations/**/*", "test/**/*", "vitest.config.ts", "tsdown.config.ts"],
+  "include": [
+    "src/**/*",
+    "bin/**/*",
+    "migrations/**/*",
+    "test/**/*",
+    "vitest.config.ts",
+    "tsdown.config.ts",
+    "vite.admin.config.ts",
+    "scripts/**/*"
+  ],
   "compilerOptions": {
     "types": ["node"],
     "allowJs": true,

@@ -1,21 +1,14 @@
 import { type RouteConfig, index, layout, route } from '@react-router/dev/routes';
 
+// Use the same path as the `adminPath` of Genga (GENGA_ADMIN_PATH at build time and at start).
+const adminPath = process.env.GENGA_ADMIN_PATH || '/admin';
+
 export default [
-  route('/admin/api/*', 'routes/admin/api.ts'),
-  route('/admin', 'routes/admin/shell.tsx', [
-    route('login', 'routes/admin/login.tsx'),
-    route('setup', 'routes/admin/setup.tsx'),
-    layout('routes/admin/app.tsx', [
-      index('routes/admin/dashboard.tsx'),
-      route('collections/:collection', 'routes/admin/collection.tsx'),
-      route('collections/:collection/:id', 'routes/admin/document.tsx'),
-      route('media', 'routes/admin/media.tsx'),
-      route('users', 'routes/admin/users.tsx'),
-      route('tokens', 'routes/admin/tokens.tsx'),
-    ]),
-  ]),
-  route('/media/*', 'routes/media.ts'),
-  route('/mcp', 'routes/mcp.ts'),
+  // One resource route for each Genga path. `genga.handle` serves the admin app, its API, the media and MCP.
+  route(`${adminPath}/*`, 'routes/genga.ts', { id: 'genga-admin' }),
+  route('/media/*', 'routes/genga.ts', { id: 'genga-media' }),
+  route('/mcp', 'routes/genga.ts', { id: 'genga-mcp' }),
+  route('/.well-known/*', 'routes/genga.ts', { id: 'genga-well-known' }),
 
   layout('routes/site-layout.tsx', [
     index('routes/home.tsx'),

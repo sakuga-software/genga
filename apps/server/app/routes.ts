@@ -1,7 +1,8 @@
-import { type RouteConfig, index, layout, route } from '@react-router/dev/routes';
+import { type RouteConfig, index, route } from '@react-router/dev/routes';
 
-// The admin path is read at start (GENGA_ADMIN_PATH), so the admin routes match any
-// first segment, and their loaders answer 404 for a segment that is not the admin path.
+// `genga.handle` answers in the root middleware: the admin app, its API, the media, the public
+// API, MCP and its OAuth metadata. The admin path is a setting (GENGA_ADMIN_PATH), so the last
+// route matches any other path and gives React Router a match.
 export default [
   index('routes/home.ts'),
   route('healthz', 'routes/healthz.ts'),
@@ -9,18 +10,5 @@ export default [
   route('api/v1/*', 'routes/api-v1.ts'),
   route('media/*', 'routes/media.ts'),
   route('.well-known/*', 'routes/well-known.ts'),
-  route(':admin/api/*', 'routes/admin/api.ts'),
-  route(':admin', 'routes/admin/shell.tsx', [
-    route('login', 'routes/admin/login.tsx'),
-    route('setup', 'routes/admin/setup.tsx'),
-    route('oauth/authorize', 'routes/admin/oauth-authorize.tsx'),
-    layout('routes/admin/app.tsx', [
-      index('routes/admin/dashboard.tsx'),
-      route('collections/:collection', 'routes/admin/collection.tsx'),
-      route('collections/:collection/:id', 'routes/admin/document.tsx'),
-      route('media', 'routes/admin/media.tsx'),
-      route('users', 'routes/admin/users.tsx'),
-      route('tokens', 'routes/admin/tokens.tsx'),
-    ]),
-  ]),
+  route('*', 'routes/genga.ts'),
 ] satisfies RouteConfig;

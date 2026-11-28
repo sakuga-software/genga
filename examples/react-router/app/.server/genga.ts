@@ -26,6 +26,7 @@ function start(): Genga | null {
     allowedOrigins: allowedOrigins(),
     mediaDir: process.env.GENGA_MEDIA_DIR || './data/media',
     adminEmail: process.env.GENGA_ADMIN_EMAIL ?? null,
+    mcp: { path: '/mcp' },
   });
   genga.ready().catch((error) => console.error('[genga] Start failed:', error));
   return genga;
@@ -36,23 +37,6 @@ export function getGenga(): Genga | null {
   // In dev, Vite reloads this module. The global keeps one database pool.
   if (globalStore.__genga === undefined) globalStore.__genga = start();
   return globalStore.__genga;
-}
-
-/** For admin routes: the ready instance, or a 503 answer when the CMS is off. */
-export async function requireGenga(): Promise<Genga> {
-  const genga = getGenga();
-  if (!genga) {
-    throw data(
-      { message: 'The CMS is off: DATABASE_URL is not set.' },
-      { status: 503, headers: { 'X-Robots-Tag': 'noindex', 'Cache-Control': 'no-store' } },
-    );
-  }
-  try {
-    await genga.ready();
-  } catch {
-    throw data({ message: 'The CMS cannot reach its database.' }, { status: 503 });
-  }
-  return genga;
 }
 
 /** Turns a Genga route result into the loader answer: data, a 301, or a 404. */

@@ -13,9 +13,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `GET|POST <adminPath>/api/setup` and `GET|POST <adminPath>/api/consent`. They keep the session,
   origin, login limit and role checks of the route modules. See
   `docs/configuration.md#the-admin-api-of-the-admin-pages`.
+- A Content Security Policy on the admin pages, without `'unsafe-inline'`:
+  `default-src 'self'; script-src 'self'; style-src 'self'; …; frame-ancestors 'none'`. See
+  `docs/security.md#admin-responses`.
+- `adminApp: false` option: `genga.handle` leaves the admin pages to the route modules of 0.3.
+- `adminAssetsDir` option: another directory for the admin app.
+- `StorageAdapter.deliveryOrigins`: the origins of the signed media URLs, for the admin CSP.
+  `s3StorageAdapter` sets it with `delivery: 'signed'`.
+- End-to-end tests of the admin with Playwright, in CI: setup, login, editor and live preview,
+  publish, versions, media, invitation, token, OAuth consent, a custom admin path, and no CSP
+  violation (`pnpm test:e2e:admin`).
 
 ### Changed
 
+- The admin is a prebuilt single-page app (GNG-27). `genga.handle` serves its HTML shell on
+  every path under `adminPath`, and its hashed assets under `<adminPath>/_app/` with a cache of
+  one year. The shell has no inline script, and reads the admin path from a meta tag, so
+  `adminPath` stays a runtime option. A site mounts one route per Genga path that calls
+  `genga.handle`: no admin route modules, no `genga/admin.css` link, no `data-genga-admin` in
+  `root.tsx`. Login, setup and invitation links, and the OAuth consent page are pages of the
+  app. See `docs/configuration.md#the-admin-app`.
+  **Migration:** a site that calls `genga.handle` for every request (in a middleware) and keeps
+  the admin route modules of 0.3 now gets the admin app on its admin pages. Set
+  `adminApp: false` to keep the route modules. A site that routes only `<adminPath>/api/*` to
+  `genga.handle` sees no change.
+- The admin pages send `frame-ancestors 'none'` (was `'self'`): no page can frame the admin.
+- The example app and the server image use the admin app. The server image ships
+  `dist/admin-app` and has no admin route module.
+- The editor turns off the style element of TipTap (`injectCSS: false`): `genga/admin.css`
+  holds its rules.
 - `genga.admin.*` no longer imports `react-router`: its loaders and actions throw a plain
   `Response`, which React Router reads as a redirect or an error response, as before.
 

@@ -190,60 +190,30 @@ export const genga = createGenga(gengaConfig, {
 });
 ```
 
-**3. Mount the admin, its API and the media route.** Each admin route module is a few
-lines: a loader that calls `genga.admin.*` and a page component from `genga/admin`. The shell route links
-`genga/admin.css`, and `root.tsx` sets `data-genga-admin` on `<html>` for the admin paths.
-
-<details>
-<summary>The route config and one admin route module</summary>
+**3. Mount the Genga paths.** One resource route calls `genga.handle` for the admin, its API
+and the media. The admin is a prebuilt single-page app inside the `genga` package: the site needs
+no admin route, no admin stylesheet and no change to `root.tsx`.
 
 ```ts
 // app/routes.ts
-import { type RouteConfig, index, layout, route } from '@react-router/dev/routes';
+import { type RouteConfig, route } from '@react-router/dev/routes';
 
 export default [
-  route('/admin/api/*', 'routes/admin/api.ts'),
-  route('/admin', 'routes/admin/shell.tsx', [
-    route('login', 'routes/admin/login.tsx'),
-    route('setup', 'routes/admin/setup.tsx'),
-    layout('routes/admin/app.tsx', [
-      index('routes/admin/dashboard.tsx'),
-      route('collections/:collection', 'routes/admin/collection.tsx'),
-      route('collections/:collection/:id', 'routes/admin/document.tsx'),
-      route('media', 'routes/admin/media.tsx'),
-      route('users', 'routes/admin/users.tsx'),
-    ]),
-  ]),
-  route('/media/*', 'routes/media.ts'),
+  route('/admin/*', 'routes/genga.ts', { id: 'genga-admin' }),
+  route('/media/*', 'routes/genga.ts', { id: 'genga-media' }),
   route('/:slug', 'routes/page.tsx'),
 ] satisfies RouteConfig;
 ```
 
-```tsx
-// app/routes/admin/document.tsx
-import { DocumentPage } from 'genga/admin';
-import { genga } from '../../.server/genga';
-import type { Route } from './+types/document';
-
-export async function loader({ request, params }: Route.LoaderArgs) {
-  await genga.ready();
-  return genga.admin.document(request, params.id);
-}
-
-export default DocumentPage;
-```
-
 ```ts
-// app/routes/media.ts, and app/routes/admin/api.ts with the same `action`
+// app/routes/genga.ts
 import { genga } from '../.server/genga';
-import type { Route } from './+types/media';
+import type { Route } from './+types/genga';
 
 export const loader = async ({ request }: Route.LoaderArgs) =>
   (await genga.handle(request)) ?? new Response('Not found', { status: 404 });
 export const action = loader;
 ```
-
-</details>
 
 **4. Render a page, with live preview.**
 
@@ -277,8 +247,8 @@ export default function Page({ loaderData }: Route.ComponentProps) {
 Start the app with `DATABASE_URL` set. At the first start, the server logs a one-time link
 `/admin/setup?token=…` that creates the first admin.
 
-The [example app](./examples/react-router) has every route module, the admin stylesheet link,
-the cache headers and a blog collection. Copy from it. Read
+The [example app](./examples/react-router) has the Genga routes, MCP, the cache headers and a
+blog collection. Copy from it. Read
 [configuration](./docs/configuration.md) and [blocks](./docs/blocks.md) for the details.
 
 ## Quick start: headless with Docker
@@ -340,7 +310,7 @@ Both sides post only to the exact origin of the other side, and check `event.ori
 flowchart LR
     subgraph lib ["Library mode: your React Router app"]
         site["Site routes<br/>RenderBlocks, usePreviewData"]
-        admin["Admin routes<br/>genga/admin"]
+        admin["Admin app<br/>genga.handle"]
         core["createGenga<br/>genga/server"]
         site --> core
         admin --> core
@@ -361,8 +331,8 @@ flowchart LR
 | Entry           | Content                                                                       |
 | --------------- | ----------------------------------------------------------------------------- |
 | `genga`         | `defineConfig`, `defineBlock`, field builders, access rules, `richTextToHtml` |
-| `genga/server`  | `createGenga`: auth, documents, published reads, media, admin loaders, API    |
-| `genga/admin`   | the admin route components                                                    |
+| `genga/server`  | `createGenga`, `genga.handle`: the admin app, its API, media, auth, reads     |
+| `genga/admin`   | the admin route components of 0.3, for the route modules (deprecated)         |
 | `genga/client`  | `RenderBlocks`, `RichText`, `usePreviewData`, the preview bridge              |
 | `genga/preview` | `connectPreview` for any framework, no React                                  |
 

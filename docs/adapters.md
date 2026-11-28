@@ -192,6 +192,11 @@ the admin path, one stylesheet and one module script under `<adminPath>/_app/`, 
 - **Base path.** The bundle builds with a relative base, so its dynamic imports resolve from the URL of the entry
   script. The router reads its basename from the `genga-admin-path` meta tag. `adminPath` therefore stays a runtime
   option.
+
+  **As built (GNG-27).** The router mounts its routes under a `path` equal to the admin path, read from the meta tag,
+  not under a `basename`: the page components build absolute links with `adminPath()`. The root element holds a
+  loading text until the first view arrives.
+
 - **SSR and hydration.** None. The admin is behind a login and `noindex`. The shell shows a loading state until the
   first JSON view arrives. This removes every hydration concern from the adapters, and the admin no longer depends
   on the React version of the site.
@@ -202,6 +207,15 @@ the admin path, one stylesheet and one module script under `<adminPath>/_app/`, 
   `default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob: <media origin>; connect-src 'self'; frame-src 'self' <preview origins>; frame-ancestors 'self'; base-uri 'none'; form-action 'self'; object-src 'none'`.
   `style-src-attr` is necessary because React Aria sets `style` attributes. The prototype must confirm that HeroUI
   and TipTap need nothing more.
+
+  **Change (GNG-27, after the prototype).** The admin CSP has no `style-src-attr 'unsafe-inline'` and no nonce:
+  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: <media origins>; font-src 'self'; connect-src 'self'; frame-src 'self' <site origin> <preview origins>; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`.
+  React sets the `style` prop through the CSSOM, which CSP does not block, so React Aria needs no exception. The two
+  `<style>` elements that the libraries add are replaced by rules in the admin stylesheet (section 14, risk 2). The
+  admin needs no frame, and every page sends `frame-ancestors 'none'`: a move inside the app keeps the policy of the
+  first page, so the consent page could not keep a policy of its own. The media origins are the `publicBaseUrl` of the storage and its
+  `deliveryOrigins` (the bucket origin of `s3StorageAdapter` with `delivery: 'signed'`).
+
 - **Site CSP.** The site must not add its own CSP to admin responses. Each adapter mounts the handler before the CSP
   layer of the framework, or excludes `<adminPath>` from it (section 7).
 - **Other headers.** `X-Robots-Tag: noindex, nofollow`, `Cache-Control: private, no-store` on the shell and the API,
@@ -972,6 +986,30 @@ Risks (check in the first days of the phase that needs them):
 
 2. **Admin CSP.** Confirm that HeroUI, React Aria and TipTap work with `style-src 'self'` and
    `style-src-attr 'unsafe-inline'`.
+
+   **Result (GNG-27, HeroUI 3.2.8, React Aria 3.53.1, TipTap 3.35, 2026-11-28).** A script drove the production
+   build of the admin under the enforced CSP in Chromium, Firefox and WebKit (Playwright 1.65), and recorded each
+   `securitypolicyviolation` event: login, setup, dashboard, command palette, collection list, editor with the live
+   preview, rich text, schedule dialog, versions drawer, block drag and drop (keyboard and pointer), add-block menu,
+   publish and its toast, media upload, role select, token creation, OAuth consent and its redirect, logout.
+   - With `style-src 'self'` and no exception, two `<style>` elements are blocked: the ProseMirror base styles of
+     TipTap (`injectCSS`), and the `touch-action` rule of React Aria `usePress`
+     (`[data-react-aria-pressable]`), on every page.
+   - No `style` attribute is blocked. React and React Aria set styles through the CSSOM (`element.style`), and
+     CSP applies to the attribute only when markup or `setAttribute('style')` sets it.
+   - The fix: `injectCSS: false` in the editor, the TipTap rules in the admin stylesheet, and the React Aria rule
+     there too. `usePress` adds its element only if no element has the id `react-aria-pressable-style`, so the
+     stylesheet link of the shell has this id. After the fix, the three engines record no violation, and the
+     admin needs neither `style-src-attr 'unsafe-inline'` nor a nonce.
+   - The decision follows the evidence: the stricter policy. The React Aria id is an implementation detail. The
+     end-to-end tests of the admin (Chromium, in CI) fail on any CSP violation of any page that they open, so an
+     upgrade that adds a style element fails CI.
+     The fallback is a nonce per response (`<meta name="csp-nonce">`, which React Aria reads, and `injectNonce`
+     for TipTap), not `'unsafe-inline'`.
+   - The consent answer opens the client URL with `window.location.assign`. A navigation is not a form
+     submission, so `form-action 'self'` does not block a redirect URI on another origin or with a private-use
+     scheme. Checked in the three engines.
+
 3. **h3 `toWebRequest`.** h3 marks it as not stable. Test multipart uploads and streamed MCP responses through it.
 4. **Astro `checkOrigin` on endpoints**, and the order of injected routes against user routes.
 5. **SvelteKit CSRF on JSON writes.** The docs describe form content types. Confirm that admin API writes from the

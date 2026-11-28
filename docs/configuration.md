@@ -250,18 +250,18 @@ AWS Signature Version 4 (`aws4fetch`).
 
 ## One handler: `genga.handle`
 
-`genga.handle(request, context?)` is one Fetch handler for every Genga path that is not an
-admin page. It returns a `Response`, or `null` for a path that Genga does not own, so the app
-answers it.
+`genga.handle(request, context?)` is one Fetch handler for every Genga path. It returns a
+`Response`, or `null` for a path that Genga does not own, so the app answers it.
 
-| Path                      | Content                                    | Default    |
-| ------------------------- | ------------------------------------------ | ---------- |
-| `<adminPath>/api/**`      | Admin JSON API (session cookie)            | on         |
-| `<mediaPath>/**`          | Media files                                | on         |
-| `/api/v1/**`              | [Public API](./api.md) and preview drafts  | off        |
-| `<mcp.path>`              | [MCP endpoint](./mcp.md) (Streamable HTTP) | off        |
-| `/.well-known/oauth-*`    | OAuth metadata of the MCP endpoint         | with `mcp` |
-| `<adminPath>/api/oauth/*` | OAuth token, registration, revocation      | with `mcp` |
+| Path                      | Content                                                               | Default    |
+| ------------------------- | --------------------------------------------------------------------- | ---------- |
+| `<adminPath>`, `/**`      | The prebuilt admin app: its HTML shell, and its assets under `/_app/` | on         |
+| `<adminPath>/api/**`      | Admin JSON API (session cookie)                                       | on         |
+| `<mediaPath>/**`          | Media files                                                           | on         |
+| `/api/v1/**`              | [Public API](./api.md) and preview drafts                             | off        |
+| `<mcp.path>`              | [MCP endpoint](./mcp.md) (Streamable HTTP)                            | off        |
+| `/.well-known/oauth-*`    | OAuth metadata of the MCP endpoint                                    | with `mcp` |
+| `<adminPath>/api/oauth/*` | OAuth token, registration, revocation                                 | with `mcp` |
 
 ```ts
 // Hono
@@ -280,8 +280,10 @@ export const action = loader;
   `trustedProxies` still picks the client. Do not pass an address that a proxy computed.
 - **Paths.** Genga refuses to start when two of its paths overlap, for example
   `adminPath: '/api'` with the public API on.
-- **Admin pages.** The admin pages stay route modules (below) until the admin becomes a
-  single-page app. `genga.handle` returns `null` for them.
+- **Admin pages.** The admin is a single-page app, built into the `genga` package. Every path
+  under `adminPath` gives its HTML shell, and the app reads its data from the admin API. It needs
+  no React, React Router or Tailwind in the site, and no server rendering. See
+  [the admin app](#the-admin-app).
 
 ### The admin API of the admin pages
 
@@ -310,65 +312,58 @@ they are deprecated: each logs one warning per process, and they leave at 1.0.
 | Variable                | Purpose                                                            |
 | ----------------------- | ------------------------------------------------------------------ |
 | `DATABASE_URL`          | Postgres URL. Without it, the example keeps the CMS off.           |
+| `GENGA_ADMIN_PATH`      | Admin path, at build time (routes) and at start. Default `/admin`. |
 | `SITE_URL`              | Public origin of the site.                                         |
 | `GENGA_MEDIA_DIR`       | Media directory. Mount a persistent volume there in production.    |
 | `GENGA_ALLOWED_ORIGINS` | Comma-separated origins that can send writes.                      |
 | `GENGA_ADMIN_EMAIL`     | Email of the first admin.                                          |
 | `GENGA_TRUSTED_PROXIES` | Number of trusted proxies. Default 1. 0 ignores `X-Forwarded-For`. |
 
-## Routes
+## The admin app
 
-The app mounts these route modules. Each one is a few lines: the loader calls Genga, the
-component comes from `genga/admin`.
+The app mounts one route for each Genga path, and each route calls `genga.handle`:
 
 ```ts
 // app/routes.ts
-route('/admin/api/*', 'routes/admin/api.ts'), // genga.handle(request)
-route('/admin', 'routes/admin/shell.tsx', [
-  route('login', 'routes/admin/login.tsx'),
-  route('setup', 'routes/admin/setup.tsx'),
-  layout('routes/admin/app.tsx', [
-    index('routes/admin/dashboard.tsx'),
-    route('collections/:collection', 'routes/admin/collection.tsx'),
-    route('collections/:collection/:id', 'routes/admin/document.tsx'),
-    route('media', 'routes/admin/media.tsx'),
-    route('users', 'routes/admin/users.tsx'),
-    route('tokens', 'routes/admin/tokens.tsx'),
-  ]),
-]),
-route('/media/*', 'routes/media.ts'), // genga.handle(request)
-route('/mcp', 'routes/mcp.ts'), // optional: genga.handle(request) with the mcp option, see docs/mcp.md
-// With the mcp option, OAuth needs these two routes too:
-route('/.well-known/*', 'routes/well-known.ts'), // genga.handle(request)
-route('/admin/oauth/authorize', 'routes/admin/oauth-authorize.tsx'), // the consent page, outside the app layout
+const adminPath = process.env.GENGA_ADMIN_PATH || '/admin';
+export default [
+  route(`${adminPath}/*`, 'routes/genga.ts', { id: 'genga-admin' }), // the admin app and its API
+  route('/media/*', 'routes/genga.ts', { id: 'genga-media' }),
+  route('/mcp', 'routes/genga.ts', { id: 'genga-mcp' }), // with the mcp option, see docs/mcp.md
+  route('/.well-known/*', 'routes/genga.ts', { id: 'genga-well-known' }), // OAuth metadata of MCP
+  // …the routes of the site
+] satisfies RouteConfig;
+
+// app/routes/genga.ts
+export async function loader({ request }: Route.LoaderArgs) {
+  return (await genga.handle(request)) ?? new Response('Not found', { status: 404 });
+}
+export const action = loader;
 ```
 
-The consent page (`OAuthConsentPage`) has the loader `genga.admin.oauthAuthorizeLoader(request)`
-and the action `genga.admin.oauthAuthorizeAction(request)`. Put it in the `shell.tsx` route, next
-to `login`. The OAuth endpoints under `<adminPath>/api/oauth/*` go through the admin API route,
-so that route must call `genga.handle`, not the deprecated `genga.api`.
+- **The shell.** `genga.handle` renders it at each request: `<html data-genga-admin>`, a `robots`
+  meta tag, a `genga-admin-path` meta tag with the admin path, one stylesheet and one module script
+  under `<adminPath>/_app/`. There is no inline script. The admin path stays a runtime option: the
+  router of the app reads it from the meta tag, and the bundle loads its chunks from the URL of its
+  entry script.
+- **Frames.** No site can frame the admin (`frame-ancestors 'none'`).
+- **Pages.** Login, setup, invitation links, the OAuth consent page (`<adminPath>/oauth/authorize`)
+  and the screens of the admin are routes of the app. The forms post to the admin API with `fetch`.
+  The logout form posts to `<adminPath>/api/logout`.
+- **Headers.** The shell has its own Content Security Policy (see [security](./security.md#admin-responses)),
+  `Cache-Control: private, no-store` and `X-Robots-Tag: noindex, nofollow`. The assets have hashed
+  names and a cache of one year. Do not add a site CSP to these responses.
+- **Cookie.** `__Host-genga` (`Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`), as before. A site
+  with its own auth must not use the cookie name `genga`.
+- **The build.** The admin is in `dist/admin-app` of the package. `genga.handle` finds it next to
+  its own files, or through `genga/package.json` when a bundler copies `genga/server` into the
+  server build. The `adminAssetsDir` option gives another directory.
+- **A custom path.** Set `adminPath` (or `GENGA_ADMIN_PATH`), for example `/cms`, and use the same
+  path in `routes.ts`.
 
-The `tokens` page (`TokensPage`, loader `genga.admin.tokens(request)`) lets each user create
-and revoke the personal access tokens of the [MCP endpoint](./mcp.md), and disconnect the MCP
-clients that signed in with OAuth.
-
-To mount the admin elsewhere, set `adminPath` (or `GENGA_ADMIN_PATH`), for example `/cms`,
-and use the same path in `routes.ts`: `route('/cms/api/*', …)` and `route('/cms', …)`. The
-admin pages read the path from their loader data.
-
-The admin route `shell.tsx` loads the stylesheet:
-
-```ts
-import adminCss from 'genga/admin.css?url';
-export const links = () => [{ rel: 'stylesheet', href: adminCss }];
-```
-
-The root layout must set these attributes on `<html>` for admin paths, because the theme
-applies under `html[data-genga-admin]`:
-
-```tsx
-<html className="dark" data-theme="dark" data-genga-admin="">
-```
+The admin route modules of `genga/admin` and the `genga.admin.*` loaders of 0.3 still work. A
+site that keeps them and calls `genga.handle` for every request, in a middleware, sets
+`adminApp: false`: `genga.handle` then answers only `<adminPath>/api/*` under the admin path.
 
 ## Migrations
 

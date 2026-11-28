@@ -71,12 +71,13 @@
     "provenance": true
   },
   "scripts": {
-    "build": "tsdown && pnpm run build:css",
+    "build": "tsdown && pnpm run build:css && pnpm run build:app",
     "build:css": "tailwindcss --input src/admin/admin.css --output dist/admin.css --minify",
     "migrate": "node ./bin/genga-migrate.mjs",
     "prepack": "pnpm run build",
     "test": "vitest run",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "build:app": "vite build --config vite.admin.config.ts && node scripts/admin-manifest.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.8",
@@ -110,6 +111,7 @@
     "tailwindcss": "^4.3.5",
     "tsdown": "^0.23.7",
     "typescript": "^7.0.2",
+    "vite": "^8.3.8",
     "vitest": "^5.1.1"
   },
   "peerDependencies": {

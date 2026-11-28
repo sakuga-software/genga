@@ -1,5 +1,4 @@
 import { createGenga, s3StorageAdapter, type Genga } from 'genga/server';
-import { data } from 'react-router';
 import { loadConfigFile } from './config-file';
 import { readSettings, SettingsError, type Settings } from './settings';
 
@@ -60,20 +59,6 @@ await store.__gengaServer;
 
 export function getServer(): Promise<GengaServer> {
   return store.__gengaServer as Promise<GengaServer>;
-}
-
-/** For admin routes: checks the admin path segment and waits for the migrations. */
-export async function requireAdmin(params: { admin?: string }): Promise<Genga> {
-  const { genga, settings } = await getServer();
-  if (`/${params.admin ?? ''}` !== settings.adminPath) {
-    throw data({ message: 'Introuvable.' }, { status: 404 });
-  }
-  try {
-    await genga.ready();
-  } catch {
-    throw data({ message: 'Le CMS ne joint pas sa base de données.' }, { status: 503 });
-  }
-  return genga;
 }
 
 /**
