@@ -37,7 +37,7 @@ Use it in two ways:
   <img src="./docs/assets/live-preview.gif" alt="The Genga editor: the author types a new title and text in the form, and the page preview on the right updates at each keystroke, then switches to a mobile width." width="960">
 </p>
 
-> **Status:** 0.1, early. The admin UI is in French for now.
+> **Status:** 0.3, early. The admin UI is in French for now.
 
 ## Contents
 

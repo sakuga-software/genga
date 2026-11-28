@@ -1,6 +1,6 @@
 {
   "name": "genga-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Genga as a standalone headless CMS: the admin, a public JSON API and the live preview bridge.",
   "license": "MIT",

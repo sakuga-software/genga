@@ -1,6 +1,6 @@
 {
   "name": "genga",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A content system that lives inside your React Router app: admin, roles, versions, media library and a live editor of your own React blocks.",
   "keywords": [
     "cms",
