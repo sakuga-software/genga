@@ -283,6 +283,25 @@ export const action = loader;
 - **Admin pages.** The admin pages stay route modules (below) until the admin becomes a
   single-page app. `genga.handle` returns `null` for them.
 
+### The admin API of the admin pages
+
+The admin pages read their data from the admin API, with the same session cookie. Every write
+passes the origin check, and every route needs a session except `session` and `setup`.
+
+| Route                                       | Content                                                                   |
+| ------------------------------------------- | ------------------------------------------------------------------------- |
+| `GET <adminPath>/api/session?next=`         | The login page: `needsSetup`, `signedIn` and the safe `next` path         |
+| `POST <adminPath>/api/session`              | `{ email, password, next }`: sets the cookie, gives `{ location }`        |
+| `GET <adminPath>/api/setup?token=`          | Describes a setup or invitation link                                      |
+| `POST <adminPath>/api/setup`                | `{ token, name, email, password, confirm }`: sets the cookie              |
+| `GET <adminPath>/api/views/<screen>[/<id>]` | The data of a screen: `layout`, `dashboard`, `collection/<name>`, …       |
+| `GET <adminPath>/api/consent?<query>`       | The OAuth consent screen of the authorization request in the query string |
+| `POST <adminPath>/api/consent?<query>`      | `{ decision, scopes }`: gives `{ location }` of the client, or `{ page }` |
+
+The sign-in routes keep the login limits and the body limit of the forms (16 KiB). Their `next`
+and `location` are always paths of the admin. The consent routes are not under `api/oauth`, because
+that path answers without the session.
+
 `genga.api(request, path)`, `genga.mcp(request)` and `genga.media.serve(key)` still work, but
 they are deprecated: each logs one warning per process, and they leave at 1.0.
 

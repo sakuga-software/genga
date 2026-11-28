@@ -56,5 +56,6 @@ export async function readJson(request: Request, maxBytes = JSON_BYTES): Promise
   } catch {
     throw badRequest('Corps JSON invalide.');
   }
+  if (Array.isArray(parsed)) throw badRequest('Objet JSON attendu.');
   return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
 }

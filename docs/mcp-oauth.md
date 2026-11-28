@@ -88,9 +88,12 @@ answer. It never trusts its own form: the form posts the original query string b
    parameter, the request asks `read write`. The person can remove a scope or add `publish`.
    The protected resource metadata gives `read write` as `scopes_supported`: the minimal set,
    as the specification asks, so a client does not ask for `publish` by default.
-6. The form posts with a full page load (`reloadDocument`), so the browser follows the `302` to
-   the client, also to a private-use scheme. The post passes the origin check of the admin. The
-   page cannot be in a frame (`frame-ancestors 'none'`).
+6. The admin app posts the answer to `<adminPath>/api/consent` with the query string of the
+   request. The answer is `{ location }`, and the page opens it with a full navigation
+   (`window.location.assign`), also for a private-use scheme. A fetch does not follow the redirect,
+   and `form-action 'self'` of the admin CSP does not apply to it. The post passes the origin
+   check of the admin. The page cannot be in a frame (`frame-ancestors 'none'`). The deprecated
+   route module keeps its form post with a `302`.
 
 The code is single-use, valid 5 minutes, and bound to the client, the redirect URI, the PKCE
 challenge, the scopes and the resource. The answer carries `iss` (RFC 9207).
