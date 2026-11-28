@@ -8,5 +8,34 @@
     "react/set-state-in-effect": "error",
     "react-hooks/exhaustive-deps": "error",
     "react-hooks/rules-of-hooks": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": [
+        "packages/genga/src/server/**",
+        "packages/genga/src/remote/**",
+        "packages/genga/src/preview/**",
+        "packages/genga/src/*.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react-router",
+                "message": "genga/server, genga/remote, genga/preview and genga run without React Router: only the deprecated genga/admin entry imports it."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["react-router/*", "@react-router/*"],
+                "message": "Only the deprecated genga/admin entry and the admin app import React Router."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

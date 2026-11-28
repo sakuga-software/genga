@@ -1,3 +1,9 @@
+/**
+ * The admin route components of Genga 0.3, for the route modules of a React Router app.
+ * @deprecated Route `<adminPath>/*` to `genga.handle(request)`: it serves the prebuilt admin app.
+ * This entry and its `react-router` peer leave at 1.0. See docs/migrate-to-admin-app.md.
+ * @module
+ */
 export { AdminAppLayout } from './pages/app-layout';
 export { AdminErrorPage } from './pages/error';
 export { CollectionPage } from './pages/collection';

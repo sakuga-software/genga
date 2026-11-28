@@ -247,6 +247,9 @@ export default function Page({ loaderData }: Route.ComponentProps) {
 Start the app with `DATABASE_URL` set. At the first start, the server logs a one-time link
 `/admin/setup?token=…` that creates the first admin.
 
+A site on Genga 0.3 with the admin route modules keeps working: read
+[the migration guide](./docs/migrate-to-admin-app.md) to move to the admin app.
+
 The [example app](./examples/react-router) has the Genga routes, MCP, the cache headers and a
 blog collection. Copy from it. Read
 [configuration](./docs/configuration.md) and [blocks](./docs/blocks.md) for the details.

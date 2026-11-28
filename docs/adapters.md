@@ -936,6 +936,13 @@ same-origin session preview stays after 1.0.
 | 4    | GNG-6  | `@genga-cms/nuxt`                                                                                                                  |
 | 5    | GNG-7  | `@genga-cms/sveltekit`                                                                                                             |
 
+**Step 2a, as delivered (GNG-27).** The admin app (R2, R3) served by `genga.handle`, its CSP, embedded mode with
+`genga.handle` and `genga.getUser`, `examples/react-router` with one route per Genga path, the server image on the
+admin app, no `react-router` import in the core (a lint rule checks it), `react-router` as an optional peer, the
+deprecation of `genga.admin.*` and `genga/admin`, the migration guide `docs/migrate-to-admin-app.md`, and its
+compatibility test. `@genga-cms/react-router`, `@genga-cms/react`, `@genga-cms/node` and the server image without
+React Router move to GNG-29. Step 2b is GNG-28.
+
 Step 1 ships a first adapter without the admin rewrite. Steps 3 to 5 can start in remote mode after step 1, and add
 embedded mode after step 2a.
 

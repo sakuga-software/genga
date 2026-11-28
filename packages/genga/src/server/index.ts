@@ -233,6 +233,22 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     };
   }
 
+  /** Logs one warning per process at the first call of any `genga.admin.*` loader or action. */
+  function deprecatedAdmin<T extends Record<string, unknown>>(admin: T): T {
+    const wrapped = {} as Record<string, unknown>;
+    for (const [name, value] of Object.entries(admin)) {
+      wrapped[name] =
+        typeof value === 'function'
+          ? deprecated(
+              'genga.admin',
+              'genga.handle(request) on <adminPath>/*, which serves the admin app',
+              value as (...args: unknown[]) => unknown,
+            )
+          : value;
+    }
+    return wrapped as T;
+  }
+
   const handle = createHandler({
     ctx,
     ready: whenReady,
@@ -267,7 +283,13 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     oauth,
     /** Base path of the media files, for example `/media`. */
     mediaPath: ctx.mediaPath,
-    admin: createAdmin(services),
+    /**
+     * Loaders and actions of the admin route modules of 0.3.
+     * @deprecated Route `<adminPath>/*` to `genga.handle(request)`: it serves the admin app. Leaves at 1.0.
+     */
+    admin: deprecatedAdmin(createAdmin(services)),
+    /** The signed-in admin user of a request, for an "Edit this page" link of the site. Null without a session. */
+    getUser: (request: Request) => auth.getUser(request),
     /**
      * The one Fetch handler: the admin API, the media files, and when they are on, the public
      * API and the MCP endpoint. It returns null for any other path, so the app answers it.
