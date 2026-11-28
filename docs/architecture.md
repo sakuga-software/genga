@@ -145,8 +145,12 @@ gets `Cache-Control: public, max-age=0, must-revalidate` with an `ETag` from the
 
 ## The admin UI
 
-The admin uses HeroUI v3 (open source), React Aria Components and TipTap. Genga's own
-components fill the gaps:
+The admin is a single-page app, built with Vite into `dist/admin-app` of the package
+(`src/admin/app`). `genga.handle` serves its HTML shell and its assets, and the app reads its
+data from the admin API: there is no server rendering. The app uses React Router in data mode,
+bundled, so the pages keep their loaders and actions. The deprecated route modules render the
+same page components. The admin uses HeroUI v3 (open source), React Aria Components and TipTap.
+Genga's own components fill the gaps:
 
 | Need                 | Component                                                                         |
 | -------------------- | --------------------------------------------------------------------------------- |
@@ -163,7 +167,7 @@ components fill the gaps:
 
 `apps/server` runs Genga as a standalone headless CMS, published as the Docker image
 `ghcr.io/sakuga-software/genga`. It is a small React Router app that imports `genga` like any
-consumer. Its root middleware calls `genga.handle` with the public API and MCP on; its routes
-add the admin pages and health checks.
+consumer. Its root middleware calls `genga.handle` with the public API and MCP on: the admin app,
+its API, the media and the public API. Its routes add the health checks.
 The config is a JSON or `.mjs` file, with blocks as schemas only. See
 [headless server](./headless-server.md) and [public API](./api.md).

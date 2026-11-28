@@ -45,9 +45,9 @@ afterAll(async () => {
 });
 
 describe('genga.handle', () => {
-  it('returns null for the site and the admin pages', async () => {
+  it('returns null for the paths of the site', async () => {
     const genga = start();
-    for (const pathname of ['/', '/journal/hello', '/admin', '/admin/login', '/admin/collections/journal', '/apis']) {
+    for (const pathname of ['/', '/journal/hello', '/administrator', '/apis', '/admins/login']) {
       expect(await genga.handle(at(pathname)), pathname).toBeNull();
     }
   });

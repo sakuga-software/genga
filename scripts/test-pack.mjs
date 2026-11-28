@@ -74,6 +74,13 @@ function checkEdgeSafe(entry) {
   console.log(`ok genga/remote imports only its own ${seen.size} files`);
 }
 
+/** Fails when the tarball lacks the prebuilt admin app that `genga.handle` serves. */
+function checkAdminApp(dir) {
+  const manifest = JSON.parse(readFileSync(path.join(dir, 'dist/admin-app/genga-admin.json'), 'utf8'));
+  for (const name of [manifest.script, manifest.style]) readFileSync(path.join(dir, 'dist/admin-app', name));
+  console.log(`ok genga ships the admin app (${manifest.script}, ${manifest.style})`);
+}
+
 /** The range of the `react-router` peer dependency of `genga` for one major, for example `^7.18.4`. */
 function peerRangeOf(major) {
   const genga = JSON.parse(readFileSync(path.join(root, 'packages/genga/package.json'), 'utf8'));
@@ -175,6 +182,7 @@ try {
     checkInstalledMajor(name, reactRouterMajor);
   }
   checkEdgeSafe(path.join(app, 'node_modules/genga/dist/remote.mjs'));
+  checkAdminApp(path.join(app, 'node_modules/genga'));
   run('npm', ['run', 'typecheck'], app);
   run('npm', ['run', 'build'], app);
 
@@ -197,12 +205,15 @@ try {
 
   const home = await expectStatus(`${base}/`, 200, 'Genga example');
   if (databaseUrl) {
-    const login = await expectStatus(`${base}/admin/login`, 200);
-    const css = /href="(\/assets\/admin-[^"]+\.css)"/.exec(login)?.[1];
-    if (!css) throw new Error('The admin page links no admin stylesheet.');
+    const login = await expectStatus(`${base}/admin/login`, 200, '<meta name="genga-admin-path" content="/admin">');
+    const css = /href="(\/admin\/_app\/admin-[^"]+\.css)"/.exec(login)?.[1];
+    const script = /src="(\/admin\/_app\/main-[^"]+\.js)"/.exec(login)?.[1];
+    if (!css || !script) throw new Error('The admin shell links no stylesheet or no script under /admin/_app/.');
     await expectStatus(`${base}${css}`, 200, 'data-genga-admin');
-    await expectStatus(`${base}/admin`, 302);
-    await expectStatus(`${base}/admin/api/documents?collection=pages`, 401);
+    await expectStatus(`${base}${script}`, 200);
+    await expectStatus(`${base}/admin`, 200, 'id="genga-admin"');
+    await expectStatus(`${base}/admin/_app/missing.js`, 404);
+    await expectStatus(`${base}/admin/api/views/layout`, 401);
   } else {
     if (!home.includes('The CMS is off')) throw new Error('The home page does not say that the CMS is off.');
     await expectStatus(`${base}/admin/login`, 503);

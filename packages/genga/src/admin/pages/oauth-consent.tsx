@@ -4,6 +4,7 @@ import { Form, useActionData, useLoaderData, useNavigation } from 'react-router'
 import { API_SCOPES } from '../../access';
 import { setAdminPath } from '../../client/admin-path';
 import type { OAuthConsentPageData } from '../../types';
+import { useAdminHost } from '../host';
 import { AuthLayout } from './auth-layout';
 import { SCOPE_LABELS } from './scope-labels';
 
@@ -13,6 +14,8 @@ export function OAuthConsentPage() {
   const page = answered ?? loaded;
   setAdminPath(page.adminPath);
   const busy = useNavigation().state !== 'idle';
+  // The route module answers with a 302 to the client. The admin app opens the client URL itself.
+  const reloadDocument = useAdminHost() === 'routes';
   const [scopes, setScopes] = useState<string[]>(page.valid ? page.scopes : []);
 
   if (!page.valid) {
@@ -45,7 +48,7 @@ export function OAuthConsentPage() {
     >
       <Form
         method="post"
-        reloadDocument
+        reloadDocument={reloadDocument}
         action={`${page.adminPath}/oauth/authorize?${page.query}`}
         className="flex flex-col gap-5"
         aria-describedby={page.error ? 'consent-error' : undefined}

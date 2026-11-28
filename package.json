@@ -11,7 +11,8 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "test:pack": "node scripts/test-pack.mjs",
-    "test:e2e": "node examples/next/e2e/run.mjs"
+    "test:e2e": "node examples/next/e2e/run.mjs",
+    "test:e2e:admin": "node examples/react-router/e2e/run.mjs"
   },
   "devDependencies": {
     "oxfmt": "^0.79.0",

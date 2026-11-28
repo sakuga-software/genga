@@ -33,8 +33,26 @@ The client address is the one that the last trusted proxy added to `X-Forwarded-
 
 ## Admin responses
 
-The admin (`/admin` by default) sends `X-Robots-Tag: noindex`, `Content-Security-Policy: frame-ancestors 'self'` and
-`Cache-Control: private, no-store`.
+The admin (`/admin` by default) sends `X-Robots-Tag: noindex` and `Cache-Control: private, no-store`. The
+API sends `Content-Security-Policy: frame-ancestors 'self'`.
+
+The pages of the admin app have their own Content Security Policy, set by `genga.handle`:
+
+```
+default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: <media origins>;
+font-src 'self'; connect-src 'self'; frame-src 'self' <site origin> <preview origins>;
+frame-ancestors 'self'; base-uri 'none'; form-action 'self'; object-src 'none'
+```
+
+- No `'unsafe-inline'`, no `'unsafe-eval'`, no nonce. The HTML shell has no inline script and no
+  inline style. See the result of the prototype in [adapters, section 14](./adapters.md#14-risks-to-prototype-and-open-questions).
+- The OAuth consent page sends `frame-ancestors 'none'`.
+- The media origins come from the storage: its `publicBaseUrl`, and its `deliveryOrigins` for
+  signed URLs. A custom adapter with `signedUrl` and no `deliveryOrigins` adds `https:`.
+- The assets under `<adminPath>/_app/` have hashed names: `Cache-Control: public, max-age=31536000, immutable`
+  and `X-Content-Type-Options: nosniff`. Only the files of the build are served; any other name gives 404.
+- The site must not add its own CSP to the admin responses: mount `genga.handle` before the CSP layer of the
+  framework, or exclude the admin path from it.
 
 ## Content
 

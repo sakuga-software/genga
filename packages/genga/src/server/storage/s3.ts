@@ -139,6 +139,7 @@ export function s3StorageAdapter(options: S3StorageOptions): StorageAdapter {
 
   if (delivery === 'public') adapter.publicBaseUrl = trimSlashes(options.publicUrl as string);
   if (delivery === 'signed') {
+    adapter.deliveryOrigins = [new URL(objectUrl('x')).origin];
     adapter.signedUrl = async (key, extra = {}) => {
       const url = new URL(objectUrl(key));
       url.searchParams.set('X-Amz-Expires', String(expiresIn));

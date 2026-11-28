@@ -18,6 +18,8 @@ type Routes = {
   ctx: GengaContext;
   ready: () => Promise<void>;
   adminApi: (request: Request, path: string) => Promise<Response>;
+  /** The prebuilt admin app: its HTML shell and its assets. */
+  adminApp: (request: Request, pathname: string) => Response;
   media: (key: string) => Promise<Response>;
   publicApi: ((request: Request) => Promise<Response>) | null;
   mcp: { path: string; handle: (request: Request) => Promise<Response> } | null;
@@ -28,7 +30,7 @@ type Routes = {
   } | null;
 };
 
-type Route = 'admin-api' | 'media' | 'public-api' | 'mcp' | 'oauth' | 'well-known';
+type Route = 'admin-app' | 'admin-api' | 'media' | 'public-api' | 'mcp' | 'oauth' | 'well-known';
 
 /** Throws at start when two Genga paths overlap, because one of them would never answer. */
 export function checkPathCollisions(paths: Record<string, string | null>) {
@@ -72,9 +74,8 @@ function unavailable(route: Route): Response {
 }
 
 /**
- * The one Fetch handler of Genga. It answers the admin API, the media files, the public API,
- * the MCP endpoint and its OAuth endpoints, and returns null for every other path. The admin pages stay with the
- * route modules of the app until the admin is a single-page app.
+ * The one Fetch handler of Genga. It answers the admin app, the admin API, the media files, the
+ * public API, the MCP endpoint and its OAuth endpoints, and returns null for every other path.
  */
 export function createHandler(routes: Routes): GengaHandler {
   const { ctx } = routes;
@@ -88,6 +89,7 @@ export function createHandler(routes: Routes): GengaHandler {
     if (pathname.startsWith(`${ctx.mediaPath}/`)) return 'media';
     if (routes.publicApi && isUnderPath(pathname, PUBLIC_API_PATH)) return 'public-api';
     if (routes.mcp && pathname.replace(/\/+$/, '').toLowerCase() === routes.mcp.path.toLowerCase()) return 'mcp';
+    if (isUnderPath(pathname, ctx.adminPath)) return 'admin-app';
     return null;
   }
 
@@ -96,6 +98,8 @@ export function createHandler(routes: Routes): GengaHandler {
     const route = match(pathname);
     if (!route) return null;
     if (route === 'well-known') return (routes.oauth as NonNullable<Routes['oauth']>).wellKnown(request, pathname);
+    // The shell and its assets need no database: the app shows the error of its first API call.
+    if (route === 'admin-app') return routes.adminApp(request, pathname);
     const forwarded = context.peerAddress ? withPeer(request, context.peerAddress) : request;
     try {
       await routes.ready();

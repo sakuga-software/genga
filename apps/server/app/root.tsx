@@ -3,8 +3,8 @@ import { getServer } from './.server/genga';
 import type { Route } from './+types/root';
 
 /**
- * `genga.handle` answers before the routes: the admin API, the media files, the public API and
- * the MCP endpoint, whose path is a setting (GENGA_MCP_PATH). The admin pages stay routes.
+ * `genga.handle` answers before the routes: the admin app and its API, the media files, the
+ * public API and the MCP endpoint, whose path is a setting (GENGA_MCP_PATH).
  */
 export const middleware: Route.MiddlewareFunction[] = [
   async ({ request }, next) => (await (await getServer()).genga.handle(request)) ?? next(),
@@ -12,8 +12,7 @@ export const middleware: Route.MiddlewareFunction[] = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    // The admin stylesheet applies its theme under `html[data-genga-admin]`.
-    <html lang="fr" className="dark" data-theme="dark" data-genga-admin="">
+    <html lang="fr">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

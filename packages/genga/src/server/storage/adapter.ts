@@ -11,4 +11,9 @@ export interface StorageAdapter {
   publicBaseUrl?: string;
   /** When set, `<mediaPath>/<key>` redirects to this URL instead of streaming the file. */
   signedUrl?(key: string, options?: { contentDisposition?: string }): Promise<{ url: string; expiresIn: number }>;
+  /**
+   * The origins of the signed URLs, for `img-src` of the admin CSP. Without it, an adapter with
+   * `signedUrl` lets the admin show images from any HTTPS origin.
+   */
+  deliveryOrigins?: string[];
 }
