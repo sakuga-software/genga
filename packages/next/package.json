@@ -1,6 +1,6 @@
 {
   "name": "@genga-cms/next",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Genga for the Next.js App Router: published content in Server Components, cache tags revalidated by signed webhooks, and the live preview with Draft Mode.",
   "keywords": [
     "cms",

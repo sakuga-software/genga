@@ -76,9 +76,9 @@ shows the config, the instance, the admin routes and a page with live preview. T
 [example app](https://github.com/sakuga-software/genga/tree/main/examples/react-router) has every
 route module.
 
-## New since 0.2.0
+## New in 0.3
 
-These changes are on `main` and in the [changelog](https://github.com/sakuga-software/genga/blob/main/CHANGELOG.md):
+The [changelog](https://github.com/sakuga-software/genga/blob/main/CHANGELOG.md) lists every change. The main ones:
 
 - **`genga.handle(request, context?)`**: one Fetch handler for the admin API, the media files,
   the public API and the MCP endpoint. It returns `null` for the other paths.
