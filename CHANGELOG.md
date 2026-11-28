@@ -23,6 +23,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - End-to-end tests of the admin with Playwright, in CI: setup, login, editor and live preview,
   publish, versions, media, invitation, token, OAuth consent, a custom admin path, and no CSP
   violation (`pnpm test:e2e:admin`).
+- `genga.getUser(request)`: the signed-in admin user of a request, for the site in embedded
+  mode. See `docs/configuration.md#embedded-mode`.
+
+### Deprecated
+
+- `genga.admin.*`, the route components of `genga/admin` and `genga/admin.css`: route
+  `<adminPath>/*` to `genga.handle(request)` instead. They still work and log one warning per
+  Genga instance; they leave at 1.0. See `docs/migrate-to-admin-app.md`.
 
 ### Changed
 
@@ -38,6 +46,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `adminApp: false` to keep the route modules. A site that routes only `<adminPath>/api/*` to
   `genga.handle` sees no change.
 - The admin pages send `frame-ancestors 'none'` (was `'self'`): no page can frame the admin.
+- `react-router` is an optional peer dependency of `genga`: only the deprecated `genga/admin`
+  needs it.
 - The example app and the server image use the admin app. The server image ships
   `dist/admin-app` and has no admin route module.
 - The editor turns off the style element of TipTap (`injectCSS: false`): `genga/admin.css`

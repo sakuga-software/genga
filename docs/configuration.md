@@ -319,6 +319,46 @@ they are deprecated: each logs one warning per process, and they leave at 1.0.
 | `GENGA_ADMIN_EMAIL`     | Email of the first admin.                                          |
 | `GENGA_TRUSTED_PROXIES` | Number of trusted proxies. Default 1. 0 ignores `X-Forwarded-For`. |
 
+## Embedded mode
+
+In embedded mode, Genga runs inside the server of your site: one origin serves the site, the
+admin, the APIs and the media, and the site reads published content in process with
+`genga.getDocument`, `genga.resolveRoute` and the other methods of the
+[content source](./content-source.md). The site mounts `genga.handle` on the Genga paths.
+
+- **One long-running Node process.** Embedded mode needs Postgres, `sharp` and the file system,
+  and keeps its caches, rate limits and scheduler in the process. Use one replica. Serverless,
+  edge and multi-replica sites use remote mode (`genga/remote`) against a Genga server.
+- **One instance per process.** Create it once, for example on `globalThis` behind a guard, as
+  the example app does. Call `genga.ready()` at start, and `genga.close()` at shutdown.
+- **The signed-in user.** `genga.getUser(request)` gives the admin user of the request, or null.
+  Use it for an "Edit this page" link.
+- **Same-origin admin.** Any script of the site can call the admin API with the cookie of an
+  editor. A site with third-party scripts can put the CMS on a subdomain in remote mode instead.
+
+```ts
+// Hono on Node
+import { Hono } from 'hono';
+import { serve } from '@hono/node-server';
+import { genga } from './genga';
+
+const app = new Hono();
+app.all('*', async (c, next) => (await genga.handle(c.req.raw)) ?? next());
+app.get('/blog/:slug', async (c) => {
+  const doc = await genga.getDocument('posts', c.req.param('slug'));
+  return doc ? c.html(render(doc)) : c.notFound();
+});
+await genga.ready();
+serve({ fetch: app.fetch, port: 3000 });
+```
+
+Without a reverse proxy in front of this server, create the instance with `trustedProxies: 0`:
+the default (1) reads the client address from `X-Forwarded-For`, which a client can then set.
+
+React Router: see [the admin app](#the-admin-app) below and `examples/react-router`. A helper
+for `node:http` and Express (`toNodeListener`), the `@genga-cms/react-router` package and the
+embedded mode of `@genga-cms/next` come in later releases.
+
 ## The admin app
 
 The app mounts one route for each Genga path, and each route calls `genga.handle`:
@@ -363,7 +403,8 @@ export const action = loader;
 
 The admin route modules of `genga/admin` and the `genga.admin.*` loaders of 0.3 still work. A
 site that keeps them and calls `genga.handle` for every request, in a middleware, sets
-`adminApp: false`: `genga.handle` then answers only `<adminPath>/api/*` under the admin path.
+`adminApp: false`: `genga.handle` then answers only `<adminPath>/api/*` under the admin path. They are
+deprecated and leave at 1.0: see [the migration guide](./migrate-to-admin-app.md).
 
 ## Migrations
 
@@ -391,9 +432,9 @@ other users from `/admin/users`.
 | Entry             | Content                                                                      | Runs on |
 | ----------------- | ---------------------------------------------------------------------------- | ------- |
 | `genga`           | field builders, `defineConfig`, `defineBlock`, access, schemas               | both    |
-| `genga/server`    | `createGenga()`: database, auth, documents, media, API, admin loaders        | server  |
-| `genga/admin`     | admin route components                                                       | both    |
-| `genga/admin.css` | compiled admin stylesheet                                                    | browser |
+| `genga/server`    | `createGenga()`, `genga.handle`: the admin app, API, media, database, auth   | server  |
+| `genga/admin`     | admin route components of 0.3 (deprecated, needs `react-router`)             | both    |
+| `genga/admin.css` | compiled admin stylesheet of the route components (deprecated)               | browser |
 | `genga/render`    | `RenderBlocks`, `RichText`, `usePreviewData`                                 | both    |
 | `genga/client`    | `RenderBlocks`, `RichText`, `usePreviewData`, `connectPreview`, `apiRequest` | both    |
 | `genga/preview`   | `connectPreview`, `richTextToHtml`: no React, no dependency                  | browser |

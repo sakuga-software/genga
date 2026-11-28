@@ -8,5 +8,34 @@
     "react/set-state-in-effect": "error",
     "react-hooks/exhaustive-deps": "error",
     "react-hooks/rules-of-hooks": "error"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["packages/genga/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react-router",
+                "message": "The core entries of genga run without React Router: only the deprecated genga/admin entry and the admin app import it."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["react-router/*", "@react-router/*"],
+                "message": "Only the deprecated genga/admin entry and the admin app import React Router."
+              },
+              {
+                "group": ["**/admin/*", "../admin", "../admin/**", "./admin/**"],
+                "message": "The admin imports React Router: a core entry must not import it."
+              }
+            ]
+          }
+        ]
+      },
+      "excludeFiles": ["packages/genga/src/admin/**"]
+    }
+  ]
 }

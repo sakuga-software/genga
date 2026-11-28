@@ -67,6 +67,24 @@ describe('genga.handle', () => {
     expect(await listed?.json()).toEqual({ documents: [] });
   });
 
+  it('logs one deprecation warning per process for genga.admin', async () => {
+    const warnings: unknown[] = [];
+    const genga = start({ logger: { ...quiet, warn: (message: unknown) => warnings.push(message) } });
+    await genga.admin.loginLoader(at('/admin/login'));
+    await genga.admin.setupLoader(at('/admin/setup'));
+    expect(warnings).toEqual([expect.stringContaining('genga.admin is deprecated')]);
+  });
+
+  it('gives the signed-in user to the site', async () => {
+    const genga = start();
+    expect(await genga.getUser(at('/'))).toBeNull();
+    const user = await createUser(genga, 'editor');
+    const cookie = await genga.auth.createSession(user.id, at('/'));
+    const found = await genga.getUser(at('/', { headers: { cookie: cookie.split(';')[0] } }));
+    expect(found).toMatchObject({ id: user.id });
+    expect(found).not.toHaveProperty('sessionId');
+  });
+
   it('keeps the public API and MCP off by default', async () => {
     const genga = start();
     expect(await genga.handle(at('/api/v1/collections'))).toBeNull();

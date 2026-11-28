@@ -9,7 +9,7 @@
 // `--react-router=7` installs React Router 7 in the copy, at the range of the peer dependency of
 // `genga`. The default is the React Router 8 of the example.
 import { spawn, execFileSync } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -229,6 +229,10 @@ try {
   copyExample('next', nextApp, { genga: `file:../${tarball}`, '@genga-cms/next': `file:../${nextTarball}` });
   run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], nextApp);
   checkNextPackage(path.join(nextApp, 'node_modules/@genga-cms/next'));
+  if (existsSync(path.join(nextApp, 'node_modules/react-router'))) {
+    throw new Error('npm installed react-router in the Next.js example: genga must not need it.');
+  }
+  console.log('ok the Next.js example installs genga without react-router');
   run('npm', ['run', 'typecheck'], nextApp);
   // The build reads no content: the pages render at their first request.
   const build = execFileSync('npm', ['run', 'build'], {
