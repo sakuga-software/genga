@@ -76,6 +76,16 @@ describe('admin API for the admin app', () => {
       expect((await call('/views/layout', { cookie })).status).toBe(200);
     });
 
+    it('answers 400, never 500, for a sign-in body that is not an object', async () => {
+      for (const body of [null, [], 'text', 42]) {
+        for (const route of ['/session', '/setup']) {
+          const response = await post(route, body);
+          expect(response.status, `${route} ${JSON.stringify(body)}`).toBeGreaterThanOrEqual(400);
+          expect(response.status, `${route} ${JSON.stringify(body)}`).toBeLessThan(500);
+        }
+      }
+    });
+
     it('refuses a sign-in body over the form limit', async () => {
       const big = await post('/session', { email: 'x@genga.test', password: 'x'.repeat(20_000) });
       expect(big.status).toBe(413);
