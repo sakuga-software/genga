@@ -1,6 +1,6 @@
 import postgres from 'postgres';
 import { blockSchemas, type GengaConfig } from '../config';
-import { createAdmin } from './admin';
+import { createAdmin, createAdminViews } from './admin';
 import { createApiTokens } from './api-tokens';
 import { createApi } from './api';
 import { createAuth } from './auth';
@@ -193,9 +193,10 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
       ? createOAuth({ ctx, tokens }, mcpPath, mcpOptions.oauth ?? {})
       : null;
   const services = { ctx, auth, documents, media, users, tokens, oauth };
+  const views = createAdminViews(services);
   const reads = createPublicReads({ ctx, published });
   const source = createEmbeddedSource({ ctx, auth, published, reads });
-  const api = createApi(services);
+  const api = createApi({ ...services, views });
   const mcp = createMcp(services, mcpOptions ?? {});
   const scheduler = createScheduler(ctx, documents, options.scheduler || {}, options.maxConnections ?? 10);
 

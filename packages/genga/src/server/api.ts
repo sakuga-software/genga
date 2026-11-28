@@ -2,8 +2,9 @@ import { tolerantRead } from '../fields/schema';
 import { populate } from '../populate';
 import type { PublicUser } from '../types';
 import type { GengaApiTokens } from './api-tokens';
-import type { GengaAuth } from './auth';
-import { readForm, readJson, UPLOAD_OVERHEAD_BYTES } from './body';
+import type { GengaAuth, SessionUser } from './auth';
+import type { GengaAdminViews } from './admin';
+import { AUTH_FORM_BYTES, readForm, readJson, UPLOAD_OVERHEAD_BYTES } from './body';
 import type { GengaContext } from './context';
 import type { GengaDocuments } from './documents';
 import { badRequest, GengaError, notFound } from './errors';
@@ -47,13 +48,73 @@ type Services = {
   users: GengaUsers;
   tokens: GengaApiTokens;
   oauth: GengaOAuth | null;
+  views: GengaAdminViews;
 };
 
-/** Handles `<adminPath>/api/*`. Every request needs a session; every write passes the origin check. */
-export function createApi({ ctx, auth, documents, media, users, tokens, oauth }: Services) {
-  async function route(request: Request, user: PublicUser, segments: string[]): Promise<Response> {
+/**
+ * Handles `<adminPath>/api/*`. Every write passes the origin check. Every route needs a session,
+ * except the sign-in routes `session` and `setup`.
+ */
+export function createApi({ ctx, auth, documents, media, users, tokens, oauth, views }: Services) {
+  /** The routes of the login and setup forms, before the session check. Null for any other route. */
+  async function signInRoute(request: Request, segments: string[]): Promise<Response | null> {
+    const method = request.method.toUpperCase();
+    const [resource, sub] = segments;
+    if (sub !== undefined) return null;
+    const url = new URL(request.url);
+    if (resource === 'session' && method === 'GET') {
+      return json(await views.login(request, url.searchParams.get('next')));
+    }
+    if (resource === 'session' && method === 'POST') {
+      const body = await readJson(request, AUTH_FORM_BYTES);
+      const { cookie, location } = await views.signIn(request, body as Parameters<typeof views.signIn>[1]);
+      return json({ location }, 200, { 'Set-Cookie': cookie });
+    }
+    if (resource === 'setup' && method === 'GET') return json(await views.setup(url.searchParams.get('token') ?? ''));
+    if (resource === 'setup' && method === 'POST') {
+      const body = await readJson(request, AUTH_FORM_BYTES);
+      const { cookie, location } = await views.acceptSetup(request, body as Parameters<typeof views.acceptSetup>[1]);
+      return json({ location }, 200, { 'Set-Cookie': cookie });
+    }
+    return null;
+  }
+
+  /** The data of one admin screen, in the shape of its `*PageData` type. */
+  async function viewRoute(request: Request, user: SessionUser, name: string, id: string | undefined) {
+    const params = new URL(request.url).searchParams;
+    if (name === 'layout' && !id) return json(views.layout(user));
+    if (name === 'dashboard' && !id) return json(await views.dashboard(user));
+    if (name === 'collection' && id) return json(await views.collection(user, id, params));
+    if (name === 'document' && id) return json(await views.document(user, id));
+    if (name === 'media' && !id) return json(await views.media(user));
+    if (name === 'users' && !id) return json(await views.users(user));
+    if (name === 'tokens' && !id) return json(await views.tokens(user));
+    throw notFound('Route API inconnue.');
+  }
+
+  /**
+   * The consent screen of an MCP client, for the admin app. It is not under `api/oauth`: that path
+   * answers without the session and the origin check. The query string is the authorization request.
+   */
+  async function consentRoute(request: Request, user: PublicUser): Promise<Response> {
+    if (!views.hasOAuth) throw notFound('Introuvable.');
+    const query = new URL(request.url).search.slice(1);
+    if (request.method === 'GET') return json(await views.consent(user, query));
+    if (request.method === 'POST') {
+      const body = await readJson(request, AUTH_FORM_BYTES);
+      const scopes = Array.isArray(body.scopes) ? body.scopes : [];
+      return json(await views.decide(user, query, { decision: body.decision, scopes }));
+    }
+    throw notFound('Route API inconnue.');
+  }
+
+  async function route(request: Request, user: SessionUser, segments: string[]): Promise<Response> {
     const method = request.method.toUpperCase();
     const [resource, id, sub] = segments;
+
+    if (resource === 'views' && method === 'GET' && segments.length <= 3)
+      return viewRoute(request, user, id ?? '', sub);
+    if (resource === 'consent' && !id) return consentRoute(request, user);
 
     if (resource === 'documents') {
       if (!id && method === 'GET') {
@@ -195,6 +256,8 @@ export function createApi({ ctx, auth, documents, media, users, tokens, oauth }:
           headers: { Location: `${ctx.adminPath}/login`, 'Set-Cookie': cookie, ...ADMIN_HEADERS },
         });
       }
+      const signIn = await signInRoute(request, segments);
+      if (signIn) return signIn;
       const user = await auth.getUser(request);
       if (!user) return json({ error: 'unauthorized', message: 'Session expirée. Reconnectez-vous.' }, 401);
       return await route(request, user, segments);

@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- The admin API serves the data of every admin screen and the sign-in forms, for the prebuilt
+  admin (GNG-27): `GET <adminPath>/api/views/<screen>`, `GET|POST <adminPath>/api/session`,
+  `GET|POST <adminPath>/api/setup` and `GET|POST <adminPath>/api/consent`. They keep the session,
+  origin, login limit and role checks of the route modules. See
+  `docs/configuration.md#the-admin-api-of-the-admin-pages`.
+
+### Changed
+
+- `genga.admin.*` no longer imports `react-router`: its loaders and actions throw a plain
+  `Response`, which React Router reads as a redirect or an error response, as before.
+
 ## [0.3.0] - 2026-11-28
 
 ### Added
