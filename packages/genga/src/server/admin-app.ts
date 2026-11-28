@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isUnderPath } from '../paths';
 import { originOf } from './origin';
 import type { GengaContext } from './context';
 
@@ -142,9 +143,13 @@ export function createAdminApp(ctx: GengaContext, assetsDir?: string) {
     });
   }
 
+  function notFoundAsset(): Response {
+    return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+  }
+
   function asset(found: Assets, name: string, method: string): Response {
     const type = found.files.get(name);
-    if (!type) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
+    if (!type) return notFoundAsset();
     let body = found.bodies.get(name);
     if (!body) {
       body = new Uint8Array(readFileSync(path.join(found.dir, name)));
@@ -173,8 +178,11 @@ export function createAdminApp(ctx: GengaContext, assetsDir?: string) {
         headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
       });
     }
-    if (pathname.startsWith(`${assetsPath}/`)) return asset(found, pathname.slice(assetsPath.length + 1), method);
-    if (pathname === assetsPath) return new Response('Not found', { status: 404 });
+    // The router of the app ignores case: a path under `_app` in any case is never the shell.
+    if (isUnderPath(pathname.toLowerCase(), assetsPath.toLowerCase())) {
+      const name = pathname.slice(assetsPath.length + 1);
+      return pathname.startsWith(`${assetsPath}/`) ? asset(found, name, method) : notFoundAsset();
+    }
     const response = shell(found);
     return method === 'HEAD' ? new Response(null, response) : response;
   };
