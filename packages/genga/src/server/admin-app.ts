@@ -11,7 +11,12 @@ export const ADMIN_ASSETS_SEGMENT = '_app';
 
 type Manifest = { script: string; style: string };
 
-type Assets = { dir: string; manifest: Manifest; files: Map<string, string> };
+type Assets = {
+  dir: string;
+  manifest: Manifest;
+  files: Map<string, string>;
+  bodies: Map<string, Uint8Array<ArrayBuffer>>;
+};
 
 const TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
@@ -25,9 +30,10 @@ const TYPES: Record<string, string> = {
 /** Where the assets can be: next to the built entry, in the package of the app, or in the source tree. */
 function candidateDirs(configured: string | undefined): string[] {
   if (configured) return [configured];
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const dirs = [path.join(here, 'admin-app'), path.join(here, '../../dist/admin-app')];
+  const dirs: string[] = [];
   try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    dirs.push(path.join(here, 'admin-app'), path.join(here, '../../dist/admin-app'));
     // A bundler that copies genga into the server build moves `import.meta.url`: the package stays.
     const pkg = createRequire(import.meta.url).resolve('genga/package.json');
     dirs.push(path.join(path.dirname(pkg), 'dist/admin-app'));
@@ -46,7 +52,7 @@ function loadAssets(dir: string): Assets | null {
     const type = TYPES[path.extname(name)];
     if (type && name !== ADMIN_MANIFEST) files.set(name, type);
   }
-  return { dir, manifest, files };
+  return { dir, manifest, files, bodies: new Map() };
 }
 
 function escapeAttribute(value: string): string {
@@ -56,8 +62,10 @@ function escapeAttribute(value: string): string {
 /**
  * The Content Security Policy of the admin pages. The admin app has no inline script and no
  * inline style element: React sets styles through the CSSOM, which `style-src` does not block.
+ * No site can frame the admin: a move inside the app keeps the policy of the first page, so the
+ * consent page cannot have a policy of its own.
  */
-export function adminCsp(ctx: GengaContext, frameAncestors: "'self'" | "'none'"): string {
+export function adminCsp(ctx: GengaContext): string {
   const images = new Set(["'self'", 'data:', 'blob:']);
   const base = ctx.storage.publicBaseUrl ? originOf(ctx.storage.publicBaseUrl) : null;
   if (base) images.add(base);
@@ -75,7 +83,7 @@ export function adminCsp(ctx: GengaContext, frameAncestors: "'self'" | "'none'")
     "font-src 'self'",
     "connect-src 'self'",
     `frame-src ${[...frames].join(' ')}`,
-    `frame-ancestors ${frameAncestors}`,
+    "frame-ancestors 'none'",
     "base-uri 'none'",
     "form-action 'self'",
     "object-src 'none'",
@@ -84,26 +92,26 @@ export function adminCsp(ctx: GengaContext, frameAncestors: "'self'" | "'none'")
 
 /** Serves the prebuilt admin app: its HTML shell under `<adminPath>`, its assets under `<adminPath>/_app/`. */
 export function createAdminApp(ctx: GengaContext, assetsDir?: string) {
-  let assets: Assets | null | undefined;
+  let assets: Assets | null = null;
+  let reported = false;
   const assetsPath = `${ctx.adminPath}/${ADMIN_ASSETS_SEGMENT}`;
-  const consentPath = `${ctx.adminPath}/oauth/authorize`;
 
+  /** Finds the build at the first request. A missing build is looked up again at the next request. */
   function getAssets(): Assets | null {
-    if (assets === undefined) {
-      assets = null;
-      for (const dir of candidateDirs(assetsDir)) {
-        assets = loadAssets(dir);
-        if (assets) break;
-      }
-      if (!assets)
-        ctx.log.error('[genga] The admin app is missing: no genga-admin.json in dist/admin-app of the genga package.');
+    if (assets) return assets;
+    for (const dir of candidateDirs(assetsDir)) {
+      assets = loadAssets(dir);
+      if (assets) return assets;
     }
-    return assets;
+    if (!reported) {
+      reported = true;
+      ctx.log.error('[genga] The admin app is missing: no genga-admin.json in dist/admin-app of the genga package.');
+    }
+    return null;
   }
 
-  function shell(found: Assets, pathname: string): Response {
-    // React Aria adds a <style> element unless an element has the id `react-aria-pressable-style`.
-    // admin.css holds its rule, so the stylesheet link takes that id.
+  function shell(found: Assets): Response {
+    // The id of the stylesheet link stops React Aria from adding a <style> element (see admin.css).
     const admin = escapeAttribute(ctx.adminPath);
     const html = `<!doctype html>
 <html lang="fr" class="dark" data-theme="dark" data-genga-admin>
@@ -121,13 +129,11 @@ export function createAdminApp(ctx: GengaContext, assetsDir?: string) {
 </body>
 </html>
 `;
-    // The consent page gives a code to a client: no site can frame it, not even the site of the admin.
-    const isConsent = pathname.replace(/\/+$/, '') === consentPath;
     return new Response(html, {
       status: 200,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        'Content-Security-Policy': adminCsp(ctx, isConsent ? "'none'" : "'self'"),
+        'Content-Security-Policy': adminCsp(ctx),
         'Cache-Control': 'private, no-store',
         'X-Robots-Tag': 'noindex, nofollow',
         'X-Content-Type-Options': 'nosniff',
@@ -139,7 +145,11 @@ export function createAdminApp(ctx: GengaContext, assetsDir?: string) {
   function asset(found: Assets, name: string, method: string): Response {
     const type = found.files.get(name);
     if (!type) return new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store' } });
-    const body = readFileSync(path.join(found.dir, name));
+    let body = found.bodies.get(name);
+    if (!body) {
+      body = new Uint8Array(readFileSync(path.join(found.dir, name)));
+      found.bodies.set(name, body);
+    }
     return new Response(method === 'HEAD' ? null : body, {
       status: 200,
       headers: {
@@ -165,7 +175,7 @@ export function createAdminApp(ctx: GengaContext, assetsDir?: string) {
     }
     if (pathname.startsWith(`${assetsPath}/`)) return asset(found, pathname.slice(assetsPath.length + 1), method);
     if (pathname === assetsPath) return new Response('Not found', { status: 404 });
-    const response = shell(found, pathname);
+    const response = shell(found);
     return method === 'HEAD' ? new Response(null, response) : response;
   };
 }

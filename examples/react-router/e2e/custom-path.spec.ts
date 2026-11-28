@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { expectNoCspViolation, watchCsp } from './csp';
+import { watchCsp } from './csp';
 
 const SITE = process.env.E2E_SITE_URL ?? 'http://localhost:3920';
 const ADMIN = process.env.E2E_ADMIN_PATH ?? '/cms';
@@ -7,7 +7,7 @@ const ADMIN = process.env.E2E_ADMIN_PATH ?? '/cms';
 test('the admin works under a custom admin path', async ({ browser, request }) => {
   test.skip(ADMIN === '/admin', 'The run sets a custom admin path for this project.');
   const context = await browser.newContext();
-  await watchCsp(context);
+  const csp = await watchCsp(context);
   const page = await context.newPage();
   await page.goto(`${SITE}${ADMIN}`);
   await expect(page).toHaveURL(new RegExp(`${ADMIN}/login\\?next=`));
@@ -19,7 +19,7 @@ test('the admin works under a custom admin path', async ({ browser, request }) =
   await page.getByRole('link', { name: /Hello, live preview/ }).click();
   await expect(page.getByLabel('Title')).toHaveValue('Hello, live preview');
   expect(new URL(page.url()).pathname.startsWith(`${ADMIN}/collections/posts/`)).toBe(true);
-  await expectNoCspViolation(page);
+  csp.expectNoViolation();
   expect((await request.get(`${SITE}/admin/login`)).status()).toBe(404);
   await context.close();
 });

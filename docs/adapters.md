@@ -192,6 +192,11 @@ the admin path, one stylesheet and one module script under `<adminPath>/_app/`, 
 - **Base path.** The bundle builds with a relative base, so its dynamic imports resolve from the URL of the entry
   script. The router reads its basename from the `genga-admin-path` meta tag. `adminPath` therefore stays a runtime
   option.
+
+  **As built (GNG-27).** The router mounts its routes under a `path` equal to the admin path, read from the meta tag,
+  not under a `basename`: the page components build absolute links with `adminPath()`. The root element holds a
+  loading text until the first view arrives.
+
 - **SSR and hydration.** None. The admin is behind a login and `noindex`. The shell shows a loading state until the
   first JSON view arrives. This removes every hydration concern from the adapters, and the admin no longer depends
   on the React version of the site.
@@ -204,10 +209,11 @@ the admin path, one stylesheet and one module script under `<adminPath>/_app/`, 
   and TipTap need nothing more.
 
   **Change (GNG-27, after the prototype).** The admin CSP has no `style-src-attr 'unsafe-inline'` and no nonce:
-  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: <media origins>; font-src 'self'; connect-src 'self'; frame-src 'self' <site origin> <preview origins>; frame-ancestors 'self'; base-uri 'none'; form-action 'self'; object-src 'none'`.
+  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: <media origins>; font-src 'self'; connect-src 'self'; frame-src 'self' <site origin> <preview origins>; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`.
   React sets the `style` prop through the CSSOM, which CSP does not block, so React Aria needs no exception. The two
   `<style>` elements that the libraries add are replaced by rules in the admin stylesheet (section 14, risk 2). The
-  consent page sends `frame-ancestors 'none'`. The media origins are the `publicBaseUrl` of the storage and its
+  admin needs no frame, and every page sends `frame-ancestors 'none'`: a move inside the app keeps the policy of the
+  first page, so the consent page could not keep a policy of its own. The media origins are the `publicBaseUrl` of the storage and its
   `deliveryOrigins` (the bucket origin of `s3StorageAdapter` with `delivery: 'signed'`).
 
 - **Site CSP.** The site must not add its own CSP to admin responses. Each adapter mounts the handler before the CSP
@@ -996,7 +1002,8 @@ Risks (check in the first days of the phase that needs them):
      stylesheet link of the shell has this id. After the fix, the three engines record no violation, and the
      admin needs neither `style-src-attr 'unsafe-inline'` nor a nonce.
    - The decision follows the evidence: the stricter policy. The React Aria id is an implementation detail. The
-     end-to-end tests of the admin fail on any CSP violation, so an upgrade that adds a style element fails CI.
+     end-to-end tests of the admin (Chromium, in CI) fail on any CSP violation of any page that they open, so an
+     upgrade that adds a style element fails CI.
      The fallback is a nonce per response (`<meta name="csp-nonce">`, which React Aria reads, and `injectNonce`
      for TipTap), not `'unsafe-inline'`.
    - The consent answer opens the client URL with `window.location.assign`. A navigation is not a form

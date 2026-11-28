@@ -41,12 +41,13 @@ The pages of the admin app have their own Content Security Policy, set by `genga
 ```
 default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: <media origins>;
 font-src 'self'; connect-src 'self'; frame-src 'self' <site origin> <preview origins>;
-frame-ancestors 'self'; base-uri 'none'; form-action 'self'; object-src 'none'
+frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'
 ```
 
 - No `'unsafe-inline'`, no `'unsafe-eval'`, no nonce. The HTML shell has no inline script and no
   inline style. See the result of the prototype in [adapters, section 14](./adapters.md#14-risks-to-prototype-and-open-questions).
-- The OAuth consent page sends `frame-ancestors 'none'`.
+- No site can frame the admin (`frame-ancestors 'none'`), so no page can frame the OAuth consent
+  page. The consent page also refuses to load in a frame in a browser without CSP.
 - The media origins come from the storage: its `publicBaseUrl`, and its `deliveryOrigins` for
   signed URLs. A custom adapter with `signedUrl` and no `deliveryOrigins` adds `https:`.
 - The assets under `<adminPath>/_app/` have hashed names: `Cache-Control: public, max-age=31536000, immutable`

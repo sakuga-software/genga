@@ -31,6 +31,39 @@ function text(form: FormData, name: string): string {
   return typeof value === 'string' ? value : '';
 }
 
+const RELOADED = 'genga-admin-reloaded';
+
+/**
+ * Loads a chunk of the admin app. After a deploy, the chunk of an open tab no longer exists: the
+ * page then reloads once to get the new build.
+ */
+async function loadChunk<T>(load: () => Promise<T>): Promise<T> {
+  try {
+    const chunk = await load();
+    remember(false);
+    return chunk;
+  } catch (error) {
+    if (!remember(true)) throw error;
+    window.location.reload();
+    return new Promise<T>(() => {});
+  }
+}
+
+/** Records the reload in the session of the tab. Returns false when the tab already reloaded, or has no storage. */
+function remember(reloading: boolean): boolean {
+  try {
+    if (!reloading) {
+      sessionStorage.removeItem(RELOADED);
+      return true;
+    }
+    if (sessionStorage.getItem(RELOADED)) return false;
+    sessionStorage.setItem(RELOADED, '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function Loading() {
   return (
     <p className="genga-boot" role="status">
@@ -92,7 +125,12 @@ export function adminRoutes(adminPath: string): RouteObject[] {
         {
           path: 'oauth/authorize',
           Component: OAuthConsentPage,
-          loader: ({ request }) => load<OAuthConsentPageData>(request, `consent${new URL(request.url).search}`),
+          loader: ({ request }) => {
+            // The CSP forbids frames. This check also covers a browser without CSP.
+            if (window.top !== window.self)
+              throw data({ message: 'Cette page ne s’ouvre pas dans un cadre.' }, { status: 403 });
+            return load<OAuthConsentPageData>(request, `consent${new URL(request.url).search}`);
+          },
           action: async ({ request }) => {
             const form = await request.formData();
             const result = await send<{ location: string } | { page: OAuthConsentPageData }>(
@@ -101,7 +139,7 @@ export function adminRoutes(adminPath: string): RouteObject[] {
               { decision: form.get('decision'), scopes: form.getAll('scope') },
               { session: true },
             );
-            if (!result.ok) throw data({ message: result.error }, { status: 400 });
+            if (!result.ok) throw data({ message: result.error }, { status: result.status });
             if ('page' in result.value) return result.value.page;
             // The client URL can have a private-use scheme: only a full navigation opens it.
             window.location.assign(result.value.location);
@@ -129,7 +167,9 @@ export function adminRoutes(adminPath: string): RouteObject[] {
             },
             {
               path: 'collections/:collection/:id',
-              lazy: async () => ({ Component: (await import('../editor/document-page')).DocumentPage }),
+              lazy: async () => ({
+                Component: (await loadChunk(() => import('../editor/document-page'))).DocumentPage,
+              }),
               loader: ({ request, params }) =>
                 load<DocumentPageData>(request, `views/document/${encodeURIComponent(params.id ?? '')}`),
             },

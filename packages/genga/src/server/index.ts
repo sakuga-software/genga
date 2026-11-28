@@ -52,6 +52,11 @@ export type GengaOptions = {
   publicApi?: boolean | PublicApiOptions;
   /** Directory of the prebuilt admin app. Default: `dist/admin-app` of the `genga` package. */
   adminAssetsDir?: string;
+  /**
+   * The prebuilt admin app on every path under `adminPath`. `false` keeps these paths for the
+   * route modules of 0.3: `genga.handle` then answers only `<adminPath>/api/*` there. Default: true.
+   */
+  adminApp?: boolean;
   /** The link "Voir le site" of the admin. `null` hides it. Default: `/`. */
   siteLink?: string | null;
   /** Origins allowed to send writes. The origin of `siteUrl` is always allowed. */
@@ -232,7 +237,7 @@ export function createGenga(config: GengaConfig, options: GengaOptions) {
     ctx,
     ready: whenReady,
     adminApi: api,
-    adminApp: createAdminApp(ctx, options.adminAssetsDir),
+    adminApp: options.adminApp === false ? null : createAdminApp(ctx, options.adminAssetsDir),
     media: media.serve,
     publicApi: publicApiOptions ? createPublicApi({ ctx, published, media }, reads, publicApiOptions) : null,
     mcp: mcpPath ? { path: mcpPath, handle: mcp } : null,

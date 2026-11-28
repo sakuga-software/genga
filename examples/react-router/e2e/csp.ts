@@ -1,22 +1,27 @@
-import { expect, type BrowserContext, type Page } from '@playwright/test';
+import { expect, type BrowserContext } from '@playwright/test';
 
-/** Records each violation of the Content Security Policy in the pages of the context. */
-export async function watchCsp(context: BrowserContext) {
+export type CspWatch = { expectNoViolation: () => void };
+
+/**
+ * Records each violation of the Content Security Policy in the pages of the context. The list
+ * lives in the test process, so a page load does not empty it.
+ */
+export async function watchCsp(context: BrowserContext): Promise<CspWatch> {
+  const violations: string[] = [];
+  await context.exposeBinding('__gengaCspViolation', (_source, text: string) => {
+    violations.push(text);
+  });
   await context.addInitScript(() => {
-    const store = window as unknown as { __cspViolations: string[] };
-    store.__cspViolations = [];
+    const report = (window as unknown as { __gengaCspViolation: (text: string) => void }).__gengaCspViolation;
     document.addEventListener('securitypolicyviolation', (event) => {
-      store.__cspViolations.push(
-        `${event.effectiveDirective} ${event.blockedURI} ${event.sourceFile}:${event.lineNumber}`,
+      void report(
+        `${location.pathname}: ${event.effectiveDirective} ${event.blockedURI} ${event.sourceFile}:${event.lineNumber}`,
       );
     });
   });
-}
-
-/** Fails when the page saw a violation of the Content Security Policy. */
-export async function expectNoCspViolation(page: Page) {
-  const violations = await page.evaluate(
-    () => (window as unknown as { __cspViolations?: string[] }).__cspViolations ?? [],
-  );
-  expect(violations, 'CSP violations').toEqual([]);
+  return {
+    expectNoViolation() {
+      expect(violations.splice(0), 'CSP violations').toEqual([]);
+    },
+  };
 }

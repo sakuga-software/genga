@@ -346,6 +346,7 @@ export const action = loader;
   under `<adminPath>/_app/`. There is no inline script. The admin path stays a runtime option: the
   router of the app reads it from the meta tag, and the bundle loads its chunks from the URL of its
   entry script.
+- **Frames.** No site can frame the admin (`frame-ancestors 'none'`).
 - **Pages.** Login, setup, invitation links, the OAuth consent page (`<adminPath>/oauth/authorize`)
   and the screens of the admin are routes of the app. The forms post to the admin API with `fetch`.
   The logout form posts to `<adminPath>/api/logout`.
@@ -360,8 +361,9 @@ export const action = loader;
 - **A custom path.** Set `adminPath` (or `GENGA_ADMIN_PATH`), for example `/cms`, and use the same
   path in `routes.ts`.
 
-The admin route modules of `genga/admin` and the `genga.admin.*` loaders of 0.3 still work: a
-site that keeps them routes only `<adminPath>/api/*` to `genga.handle`, as before.
+The admin route modules of `genga/admin` and the `genga.admin.*` loaders of 0.3 still work. A
+site that keeps them and calls `genga.handle` for every request, in a middleware, sets
+`adminApp: false`: `genga.handle` then answers only `<adminPath>/api/*` under the admin path.
 
 ## Migrations
 

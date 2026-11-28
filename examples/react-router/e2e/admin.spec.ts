@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
-import { expectNoCspViolation, watchCsp } from './csp';
+import { watchCsp, type CspWatch } from './csp';
 
 const SITE = process.env.E2E_SITE_URL ?? 'http://localhost:3920';
 const SETUP_URL = process.env.E2E_SETUP_URL ?? '';
@@ -18,16 +18,17 @@ test.describe.configure({ mode: 'serial' });
 
 let context: BrowserContext;
 let page: Page;
+let csp: CspWatch;
 let editorUrl = '';
 
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext();
-  await watchCsp(context);
+  csp = await watchCsp(context);
   page = await context.newPage();
 });
 
-test.afterEach(async () => {
-  await expectNoCspViolation(page);
+test.afterEach(() => {
+  csp.expectNoViolation();
 });
 
 test.afterAll(async () => {
@@ -37,10 +38,11 @@ test.afterAll(async () => {
 test('the shell has no inline script and a strict CSP', async ({ request }) => {
   const response = await request.get(`${SITE}/admin/login`);
   expect(response.status()).toBe(200);
-  const csp = response.headers()['content-security-policy'];
-  expect(csp).toContain("script-src 'self'");
-  expect(csp).toContain("style-src 'self'");
-  expect(csp).not.toContain('unsafe-inline');
+  const policy = response.headers()['content-security-policy'];
+  expect(policy).toContain("script-src 'self'");
+  expect(policy).toContain("style-src 'self'");
+  expect(policy).toContain("frame-ancestors 'none'");
+  expect(policy).not.toContain('unsafe-inline');
   expect(response.headers()['cache-control']).toBe('private, no-store');
   const html = await response.text();
   expect(html).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
@@ -166,7 +168,6 @@ test('the OAuth consent page gives a code to the client', async ({ request }) =>
   expect(response?.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
   await expect(page.getByRole('heading', { name: 'Autoriser l’accès' })).toBeVisible();
   await expect(page.getByText('E2E client')).toBeVisible();
-  await expectNoCspViolation(page);
   // The client app: a page at the callback URL.
   await page.route(`${callback}?**`, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: 'ok' }));
   await page.getByRole('button', { name: 'Autoriser' }).click();
@@ -174,5 +175,4 @@ test('the OAuth consent page gives a code to the client', async ({ request }) =>
   const target = new URL(page.url());
   expect(target.searchParams.get('code')).toBeTruthy();
   expect(target.searchParams.get('state')).toBe('e2e-state');
-  await page.goto(`${SITE}/admin`);
 });

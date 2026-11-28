@@ -46,14 +46,14 @@ export async function send<T>(
   path: string,
   body: unknown,
   { session = false }: { session?: boolean } = {},
-): Promise<{ ok: true; value: T } | { ok: false; error: string }> {
+): Promise<{ ok: true; value: T } | { ok: false; error: string; status: number }> {
   let response: Response;
   try {
     response = await call(path, { method: 'POST', body: JSON.stringify(body), signal: request.signal });
   } catch {
-    return { ok: false, error: NETWORK_ERROR };
+    return { ok: false, error: NETWORK_ERROR, status: 503 };
   }
   if (session && response.status === 401) throw redirect(loginUrl(request));
-  if (!response.ok) return { ok: false, error: await messageOf(response) };
+  if (!response.ok) return { ok: false, error: await messageOf(response), status: response.status };
   return { ok: true, value: (await response.json()) as T };
 }

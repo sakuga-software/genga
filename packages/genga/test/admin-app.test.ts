@@ -73,7 +73,6 @@ describe('admin app', () => {
       "img-src 'self' data: blob:",
       "connect-src 'self'",
       "frame-src 'self' http://genga.test",
-      "frame-ancestors 'self'",
       "base-uri 'none'",
       "form-action 'self'",
       "object-src 'none'",
@@ -84,9 +83,19 @@ describe('admin app', () => {
     expect(csp).not.toContain('unsafe-eval');
   });
 
-  it('forbids every frame on the consent page', async () => {
-    const response = (await start().handle(at('/admin/oauth/authorize?client_id=x'))) as Response;
-    expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+  it('forbids every frame, on the consent page and on the other pages', async () => {
+    const genga = start();
+    for (const pathname of ['/admin/oauth/authorize?client_id=x', '/admin/OAuth/authorize', '/admin/login']) {
+      const response = (await genga.handle(at(pathname))) as Response;
+      expect(response.headers.get('content-security-policy'), pathname).toContain("frame-ancestors 'none'");
+    }
+  });
+
+  it('leaves the admin pages to the route modules of 0.3 with adminApp: false', async () => {
+    const genga = start({ adminApp: false });
+    expect(await genga.handle(at('/admin/login'))).toBeNull();
+    expect(await genga.handle(at('/admin/_app/main-abc.js'))).toBeNull();
+    expect((await genga.handle(at('/admin/api/views/layout')))?.status).toBe(401);
   });
 
   it('allows the preview origins in frames and the media origins in images', async () => {

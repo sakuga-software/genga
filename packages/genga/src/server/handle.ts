@@ -18,8 +18,8 @@ type Routes = {
   ctx: GengaContext;
   ready: () => Promise<void>;
   adminApi: (request: Request, path: string) => Promise<Response>;
-  /** The prebuilt admin app: its HTML shell and its assets. */
-  adminApp: (request: Request, pathname: string) => Response;
+  /** The prebuilt admin app: its HTML shell and its assets. Null when the site keeps the route modules of 0.3. */
+  adminApp: ((request: Request, pathname: string) => Response) | null;
   media: (key: string) => Promise<Response>;
   publicApi: ((request: Request) => Promise<Response>) | null;
   mcp: { path: string; handle: (request: Request) => Promise<Response> } | null;
@@ -89,7 +89,7 @@ export function createHandler(routes: Routes): GengaHandler {
     if (pathname.startsWith(`${ctx.mediaPath}/`)) return 'media';
     if (routes.publicApi && isUnderPath(pathname, PUBLIC_API_PATH)) return 'public-api';
     if (routes.mcp && pathname.replace(/\/+$/, '').toLowerCase() === routes.mcp.path.toLowerCase()) return 'mcp';
-    if (isUnderPath(pathname, ctx.adminPath)) return 'admin-app';
+    if (routes.adminApp && isUnderPath(pathname, ctx.adminPath)) return 'admin-app';
     return null;
   }
 
@@ -99,7 +99,7 @@ export function createHandler(routes: Routes): GengaHandler {
     if (!route) return null;
     if (route === 'well-known') return (routes.oauth as NonNullable<Routes['oauth']>).wellKnown(request, pathname);
     // The shell and its assets need no database: the app shows the error of its first API call.
-    if (route === 'admin-app') return routes.adminApp(request, pathname);
+    if (route === 'admin-app') return (routes.adminApp as NonNullable<Routes['adminApp']>)(request, pathname);
     const forwarded = context.peerAddress ? withPeer(request, context.peerAddress) : request;
     try {
       await routes.ready();

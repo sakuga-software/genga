@@ -178,6 +178,14 @@ html[data-genga-admin] :where(a, button, input, select, textarea, [tabindex], if
   }
 }
 
+.genga-boot {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
 /*
  * The admin CSP has no 'unsafe-inline' in style-src, so no library can add a <style> element.
  * These rules replace the two that the libraries add at runtime:
